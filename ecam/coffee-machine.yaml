@@ -1,5 +1,5 @@
 # DeLonghi Eletta Explore (ECAM v2.1) controlled over the mainboard UART by an M5Stack Atom Lite
-# that replaces the stock Wi-Fi module. Wiring (J1, 2.0 mm header):
+# that replaces the stock Wi-Fi module. Wiring (mainboard J8, 2.0 mm; pins as on the module J1A):
 #   J1-4 3V3 -> Atom 3V3     J1-8 GND -> Atom GND
 #   J1-5 machine TX -> G19   J1-6 machine RX <- G22
 # Shared package: include it from a per-site device file (see example.yaml) and keep local

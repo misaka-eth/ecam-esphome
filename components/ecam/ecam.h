@@ -12,7 +12,7 @@
 namespace esphome {
 namespace ecam {
 
-// Monitor answer (75 0f): [0] accessory, [1..2] switches LE, [3..4] alarms LE,
+// Protocol: docs/protocol.md. Monitor answer (75 0f): [0] accessory, [1..2] switches LE, [3..4] alarms LE,
 // [5] state, [6] phase, [7] progress %, [8..12] unknown.
 struct Status {
   uint8_t accessory{0};
