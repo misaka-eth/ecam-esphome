@@ -1,0 +1,270 @@
+# DeLonghi Eletta Explore (ECAM v2.1) controlled over the mainboard UART by an M5Stack Atom Lite
+# that replaces the stock Wi-Fi module. Wiring (J1, 2.0 mm header):
+#   J1-4 3V3 -> Atom 3V3     J1-8 GND -> Atom GND
+#   J1-5 machine TX -> G19   J1-6 machine RX <- G22
+# Shared package: include it from a per-site device file (see example.yaml) and keep local
+# overrides there. The site file sets ecam_repo / ecam_ref; this package pulls the component
+# from the same repo, so an update is a push plus Install.
+esphome:
+  name: ${name}
+  friendly_name: Coffee
+
+esp32:
+  board: m5stack-atom
+  framework:
+    type: esp-idf
+
+external_components:
+  - source:
+      type: git
+      url: ${ecam_repo}
+      ref: ${ecam_ref}
+    components: [ecam]
+    refresh: ${ecam_refresh}
+
+logger:
+  baud_rate: 0          # UART0 is free; keep the log off the serial pins
+  level: INFO
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "${name}-fallback"
+    password: !secret ap_password
+
+captive_portal:
+
+ota:
+  - platform: esphome
+    encryption: {}      # Noise-encrypted OTA with the api key; plain OTA would accept any flasher on the LAN
+
+api:
+  encryption:
+    key: !secret api_key
+  actions:
+    # drink: id (1 espresso, 3 long/filter style, 6 americano, 0x0a flat white, 0x10 hot water, 0x16 tea, ...)
+    # 0 / negative = keep the stored recipe value; temp -1 = not sent, 0..3 low..max
+    - action: brew
+      variables:
+        drink: int
+        coffee_ml: int
+        water_ml: int
+        milk_s: float
+        strength: int
+        temp: int
+      then:
+        - lambda: 'id(machine).brew(drink, coffee_ml, water_ml, milk_s, strength, temp);'
+
+uart:
+  id: mainboard
+  tx_pin: GPIO22
+  rx_pin: GPIO19
+  baud_rate: 115200
+
+ecam:
+  id: machine
+  uart_id: mainboard
+  wifi_icon: auto        # real wifi / HA state on the machine display; or a fixed 0x30..0x36
+
+button:
+  - platform: template
+    name: Power on
+    icon: mdi:power
+    on_press:
+      - lambda: 'id(machine).power_on();'
+  - platform: template
+    name: Standby
+    icon: mdi:power-sleep
+    on_press:
+      - lambda: 'id(machine).power_off();'
+  - platform: template
+    name: Stop
+    icon: mdi:stop
+    on_press:
+      - lambda: 'id(machine).stop();'
+  - platform: template
+    name: Filter style 330
+    icon: mdi:coffee
+    on_press:
+      - lambda: 'id(machine).brew(0x03, 330, 0, 0, 4, -1);'
+  - platform: template
+    name: Espresso
+    icon: mdi:coffee-outline
+    on_press:
+      - lambda: 'id(machine).brew(0x01, 0, 0, 0, 0, -1);'
+
+text_sensor:
+  - platform: template
+    name: State
+    icon: mdi:coffee-maker
+    update_interval: 1s
+    lambda: 'return id(machine).state_text();'
+  - platform: template
+    name: Alarms
+    icon: mdi:alert
+    update_interval: 1s
+    lambda: |-
+      if (!id(machine).has_status()) return {"unknown"};
+      return id(machine).alarms_text();
+  - platform: template
+    name: Accessory
+    update_interval: 5s
+    lambda: |-
+      if (!id(machine).has_status()) return {"unknown"};
+      return id(machine).accessory_text();
+  # Raw door/container switches (monitor bytes 1-2). "Insert X" on the display comes from here,
+  # not from the alarm word.
+  - platform: template
+    name: Switches
+    icon: mdi:electric-switch
+    entity_category: diagnostic
+    update_interval: 1s
+    lambda: |-
+      if (!id(machine).has_status()) return {"unknown"};
+      static const char *names[16] = {"spout", "brew unit up", "brew unit down", "grounds container out",
+          "tank out", "knob", "water low", "b7", "jug", "chocolate tank", "clean knob", "b11", "b12",
+          "door open", "preground door open", "b15"};
+      uint16_t sw = id(machine).status().switches;
+      std::string out;
+      for (int i = 0; i < 16; i++)
+        if (sw & (1 << i)) { if (!out.empty()) out += ", "; out += names[i]; }
+      return out.empty() ? std::string("none") : out;
+
+sensor:
+  - platform: template
+    id: progress
+    name: Progress
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
+    update_interval: 1s
+    lambda: |-
+      if (!id(machine).has_status()) return {};
+      return id(machine).brewing() ? (float) id(machine).status().progress : 0.0f;
+  # Counters, read every minute (PAR numbers as in the service menu).
+  - platform: template
+    id: water_total
+    name: Water total
+    unit_of_measurement: L
+    device_class: water
+    state_class: total_increasing
+    accuracy_decimals: 2
+    update_interval: never
+  - platform: template
+    id: coffees
+    name: Coffees
+    state_class: total_increasing
+    accuracy_decimals: 0
+    update_interval: never
+  - platform: template
+    id: teas
+    name: Teas
+    state_class: total_increasing
+    accuracy_decimals: 0
+    update_interval: never
+  - platform: template
+    id: milk_cleans
+    name: Milk cleans
+    state_class: total_increasing
+    accuracy_decimals: 0
+    update_interval: never
+
+binary_sensor:
+  # The machine answers the 0x75 monitor, standby included. Off, unplugged or a wiring fault
+  # turns this off, and every other machine entity goes "unknown" until it answers again.
+  - platform: template
+    id: online
+    name: Machine online
+    device_class: connectivity
+    entity_category: diagnostic
+    lambda: 'return id(machine).has_status();'
+    on_release:
+      - lambda: |-
+          for (auto *b : {id(ready), id(brewing), id(tank), id(grounds), id(descale), id(beans), id(drip_tray)})
+            b->invalidate_state();
+          for (auto *b : {id(tank_out), id(grounds_out)})
+            b->invalidate_state();
+          for (auto *s : {id(progress), id(water_total), id(coffees), id(teas), id(milk_cleans)})
+            s->publish_state(NAN);
+    on_press:
+      - script.execute: read_counters
+  - platform: template
+    id: ready
+    name: Ready
+    lambda: |-
+      if (!id(machine).has_status()) return {};
+      return id(machine).idle() && id(machine).status().state == 0x07;
+  - platform: template
+    id: brewing
+    name: Brewing
+    lambda: |-
+      if (!id(machine).has_status()) return {};
+      return id(machine).brewing();
+  - platform: template
+    id: tank
+    name: Water tank
+    device_class: problem
+    lambda: |-
+      if (!id(machine).has_status()) return {};
+      return (id(machine).status().alarms & ((1 << 0) | (1 << 13))) != 0;
+  - platform: template
+    id: tank_out
+    name: Water tank removed
+    device_class: problem
+    lambda: |-
+      if (!id(machine).has_status()) return {};
+      return (id(machine).status().switches & (1 << 4)) != 0;
+  - platform: template
+    id: grounds_out
+    name: Grounds container removed
+    device_class: problem
+    lambda: |-
+      if (!id(machine).has_status()) return {};
+      return (id(machine).status().switches & (1 << 3)) != 0;
+  - platform: template
+    id: grounds
+    name: Grounds container full
+    device_class: problem
+    lambda: |-
+      if (!id(machine).has_status()) return {};
+      return (id(machine).status().alarms & (1 << 1)) != 0;
+  - platform: template
+    id: descale
+    name: Descale needed
+    device_class: problem
+    lambda: |-
+      if (!id(machine).has_status()) return {};
+      return (id(machine).status().alarms & (1 << 2)) != 0;
+  - platform: template
+    id: beans
+    name: Beans empty
+    device_class: problem
+    lambda: |-
+      if (!id(machine).has_status()) return {};
+      return (id(machine).status().alarms & ((1 << 5) | (1 << 15))) != 0;
+  - platform: template
+    id: drip_tray
+    name: Drip tray
+    device_class: problem
+    lambda: |-
+      if (!id(machine).has_status()) return {};
+      return (id(machine).status().alarms & (1 << 11)) != 0;
+
+script:
+  - id: read_counters
+    then:
+      - lambda: |-
+          // PAR 106: flowmeter count / 10; 25 pulses per ml (weighed 105 g for 2620 pulses).
+          id(machine).read_param(106, [](uint32_t v) { id(water_total).publish_state(v * 10 / 25.0f / 1000.0f); });
+          id(machine).read_param(3000, [](uint32_t v) { id(coffees).publish_state(v); });
+          id(machine).read_param(3025, [](uint32_t v) { id(teas).publish_state(v); });
+          id(machine).read_param(115, [](uint32_t v) { id(milk_cleans).publish_state(v); });
+
+interval:
+  - interval: 60s
+    then:
+      - if:
+          condition:
+            lambda: 'return id(machine).has_status();'
+          then:
+            - script.execute: read_counters

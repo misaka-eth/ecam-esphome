@@ -1,0 +1,19 @@
+# Per-site device file: paste into the ESPHome dashboard and adjust. Secrets come from the
+# dashboard's secrets.yaml (see secrets.example.yaml).
+substitutions:
+  name: coffee
+  ecam_repo: https://github.com/misaka-eth/ecam-esphome
+  ecam_ref: main
+  ecam_refresh: 1h
+
+packages:
+  ecam:
+    url: ${ecam_repo}
+    ref: ${ecam_ref}
+    refresh: ${ecam_refresh}
+    files: [ecam/coffee-machine.yaml]
+
+# Local overrides merge into the package, e.g.:
+# wifi:
+#   fast_connect: on
+#   use_address: 192.168.1.50
