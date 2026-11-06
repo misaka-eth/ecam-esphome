@@ -42,8 +42,13 @@ class Ecam : public Component, public uart::UARTDevice {
 
   bool has_status() const { return status_valid_; }
   const Status &status() const { return status_; }
-  bool idle() const { return status_valid_ && (status_.state == 0x00 || status_.state == 0x07) && status_.phase == 0; }
-  bool brewing() const { return status_valid_ && !idle() && status_.state != 0x01 && status_.state != 0x02; }
+  // Standby (00) keeps the phase byte of the last drink, so the phase only counts in state 07.
+  bool idle() const {
+    return status_valid_ && (status_.state == 0x00 || (status_.state == 0x07 && status_.phase == 0));
+  }
+  bool brewing() const {
+    return status_valid_ && !idle() && status_.state != 0x01 && status_.state != 0x02;
+  }
 
   std::string state_text() const;
   std::string alarms_text() const;
