@@ -102,7 +102,7 @@ async def stats_cmd():
     cli, raw = await raw_session()
     start, out = 0, {}
     while start <= 0xFFFF:
-        rx = await raw(f"a20f{start:04x}0a")
+        rx = await raw(f"a20f{start:04x}08")  # 8 entries: the answer must fit the firmware's 64-byte frame buffer
         if not rx or len(rx) < 6:
             break
         body = rx[4:-2]

@@ -124,11 +124,11 @@ The service menu shows the same ids as `PAR <decimal>`.
 | 200–203 | production date |
 | 205–209 | serial number (ASCII) |
 | 210 | PIN |
-| 3000 / 3001 / 3003 | coffee-only / with hot milk / to-go drinks (match the Statistics screen) |
-| 3002 | grows with hot water too; not the cold-milk counter (that one reads 0 on screen) |
-| 3025 | teas |
+| 3000 / 3001 / 3002 / 3003 | category totals: coffee only / with milk coffees / water drinks (hot water + tea) / to-go |
+| 3003 + bev id | per-drink counters: 3004 espresso (01), 3013 flat white (0A), 3015 hot milk (0C), 3019 hot water (10), 3025 tea (16) … |
 
 Write bit flags read-modify-write; a wrong full-word write changes several settings at once.
+The Statistics screen's "Total with hot milk" is PAR 3001 plus hot milk alone (3015); "Total teas" is 3025.
 Descale and filter counters were not found (PAR 105, 108, 116 stay 0).
 
 Service menu reading on this machine (for reference): PAR 400 = PAR 402 = 221680, PAR 401/403/404/405 = 0,
