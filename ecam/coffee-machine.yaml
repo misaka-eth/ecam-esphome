@@ -55,6 +55,12 @@ api:
         temp: int
       then:
         - lambda: 'id(machine).brew(drink, coffee_ml, water_ml, milk_s, strength, temp);'
+    # Debug: send a raw ECAM payload (hex, without 0D/len/CRC); the answer goes to the log at INFO.
+    - action: raw
+      variables:
+        payload: string
+      then:
+        - lambda: 'id(machine).raw(payload);'
 
 uart:
   id: mainboard

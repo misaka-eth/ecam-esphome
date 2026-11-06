@@ -236,6 +236,31 @@ void Ecam::read_param(uint16_t pid, std::function<void(uint32_t)> cb) {
                  });
 }
 
+void Ecam::raw(const std::string &hex) {
+  std::vector<uint8_t> p;
+  int hi = -1;
+  for (char ch : hex) {
+    int v = (ch >= '0' && ch <= '9') ? ch - '0' : (ch >= 'a' && ch <= 'f') ? ch - 'a' + 10
+          : (ch >= 'A' && ch <= 'F') ? ch - 'A' + 10 : -1;
+    if (v < 0)
+      continue;
+    if (hi < 0) {
+      hi = v;
+    } else {
+      p.push_back(uint8_t(hi << 4 | v));
+      hi = -1;
+    }
+  }
+  if (p.empty() || hi >= 0) {
+    ESP_LOGW(TAG, "raw: bad hex '%s'", hex.c_str());
+    return;
+  }
+  std::string tx = format_hex(p);
+  this->enqueue_(std::move(p), 1, 800, [tx](const std::vector<uint8_t> *f) {
+    ESP_LOGI(TAG, "raw %s -> %s", tx.c_str(), f ? format_hex(*f).c_str() : "no answer");
+  });
+}
+
 std::string Ecam::state_text() const {
   if (!this->status_valid_)
     return "offline";

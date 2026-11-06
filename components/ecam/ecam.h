@@ -37,6 +37,8 @@ class Ecam : public Component, public uart::UARTDevice {
   bool brew(int drink, int coffee_ml, int water_ml, float milk_s, int strength, int temp);
   void stop();
   void read_param(uint16_t pid, std::function<void(uint32_t)> cb);
+  // Debug: send any payload (hex, spaces allowed) and log the answer at INFO as "raw <tx> -> <rx>".
+  void raw(const std::string &hex);
 
   bool has_status() const { return status_valid_; }
   const Status &status() const { return status_; }
