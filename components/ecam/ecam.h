@@ -13,13 +13,14 @@ namespace esphome {
 namespace ecam {
 
 // Protocol: docs/protocol.md. Monitor answer (75 0f): [0] accessory, [1..2] switches LE, [3..4] alarms LE,
-// [5] state, [6] phase, [7] progress %, [8..12] unknown.
+// [5] state, [6] phase, [7] progress %, [8] flags (bit 4: a brew waits for beans), [9..12] unknown.
 struct Status {
   uint8_t accessory{0};
   uint16_t switches{0};
   uint16_t alarms{0};
   uint8_t state{0};
   uint8_t phase{0};
+  uint8_t flags{0};
   uint8_t progress{0};
 };
 
@@ -51,6 +52,10 @@ class Ecam : public Component, public uart::UARTDevice {
   }
 
   std::string state_text() const;
+  // Beans empty: the alarm bits (an idle machine) or flags bit 4 (a brew that ran out).
+  bool beans_empty() const {
+    return status_valid_ && ((status_.alarms & ((1 << 5) | (1 << 15))) != 0 || (status_.flags & 0x10) != 0);
+  }
   std::string alarms_text() const;
   std::string accessory_text() const;
 

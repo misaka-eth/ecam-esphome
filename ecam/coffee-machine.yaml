@@ -247,7 +247,7 @@ binary_sensor:
     device_class: problem
     lambda: |-
       if (!id(machine).has_status()) return {};
-      return (id(machine).status().alarms & ((1 << 5) | (1 << 15))) != 0;
+      return id(machine).beans_empty();
   - platform: template
     id: drip_tray
     name: Drip tray

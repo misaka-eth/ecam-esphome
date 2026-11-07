@@ -243,8 +243,11 @@ def describe(st):
     if state not in (0x00, 0x07) or phase:
         parts.append(f"phase 0x{phase:02x} {prog}%")
     parts.append("accessory: " + ACCESSORY.get(acc, f"0x{acc:02x}"))
-    if alarms:
-        parts.append("ALARM " + ", ".join(bits(alarms, ALARMS)))
+    names = bits(alarms, ALARMS)
+    if len(st) > 8 and st[8] & 0x10 and "beans empty" not in names:
+        names.append("beans empty")  # flags bit 4: a brew waits for beans
+    if names:
+        parts.append("ALARM " + ", ".join(names))
     sw = bits(switches, SWITCHES)
     if sw:
         parts.append("sw: " + ", ".join(sw))

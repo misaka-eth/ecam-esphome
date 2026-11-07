@@ -159,6 +159,7 @@ void Ecam::on_frame_(const std::vector<uint8_t> &f) {
     this->status_.state = f[9];
     this->status_.phase = f[10];
     this->status_.progress = f[11];
+    this->status_.flags = f[12];
     this->status_valid_ = true;
     this->status_at_ = millis();
     for (auto &cb : this->status_cbs_)
@@ -308,6 +309,8 @@ std::string Ecam::alarms_text() const {
       out += NAMES[i];
     }
   }
+  if ((this->status_.flags & 0x10) && (this->status_.alarms & ((1 << 5) | (1 << 15))) == 0)
+    out += out.empty() ? "beans empty" : ", beans empty";
   return out.empty() ? "none" : out;
 }
 

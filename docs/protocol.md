@@ -58,7 +58,8 @@ Deleting a profile is a rename to an all-zero name. Deleting a custom drink: `83
 | 5 | state: 00 standby, 01 heating, 02 turning off, 04 descaling, 07 ready / brewing, 08 rinsing, 0A milk, 0B hot water, 0C milk clean |
 | 6 | phase within the state (coffee brews inside state 07 with a non-zero phase) |
 | 7 | progress, 0–100 % |
-| 8–12 | not decoded |
+| 8 | flags: bit 0 set in normal operation; **bit 4 set while a brew waits for beans** (confirmed: the hopper ran out mid-brew, alarms stayed 0, state 07 phase 10 progress 0; cleared when beans were added) |
+| 9–12 | not decoded |
 
 Switches (physical sensors; the display's "insert …" prompts come from here, not from alarms):
 bit 0 spout, 1 brew-unit motor up, 2 brew-unit motor down, **3 grounds container out**, **4 water tank
