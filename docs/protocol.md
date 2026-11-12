@@ -100,16 +100,21 @@ Boiler temperature and flow are **not** exposed: the service menu shows them, bu
 
 A minimal start is enough, e.g. filter-style 330 ml at strength 4:
 `83 F0 03 03 01 01 4A 02 04 06`. The machine answers `01 00` when it accepts the order; only send
-it in state 07 with no brew running.
-
-It answers something else when it refuses a drink it could otherwise start: confirmed when the tank
-held too little water for a filter-style 330 ml (2026-11-12). The machine's own screen says "too little
-water for this drink" when the drink is chosen there, but shows nothing for a remote start, and the
-monitor (`75 0F`) stays as it was: state 07, no alarm, no water flag. Which answer bytes carry the
-reason is not known yet. The firmware logs the whole answer frame (`brew 0x03: rejected -> d0...`)
-and publishes it as the `Last brew` text sensor, e.g. `03 rejected <bytes after 83 f0>`, so the
-next refusal shows the code. To-go drinks (`50`–`56`) start with no TLVs at all
+it in state 07 with no brew running. To-go drinks (`50`–`56`) start with no TLVs at all
 (`83 F0 50 03 06`) and take size and recipe from the active profile.
+
+A drink it could otherwise start but refuses gets `01 <code>` instead of `01 00`. The machine's own
+screen says why when the drink is chosen there, but shows nothing for a remote start, and the
+monitor (`75 0F`) stays as it was: state 07, no alarm, no water flag. The firmware logs the whole
+answer frame (`brew 0x03: rejected -> d0...`) and publishes it as the `Last brew` text sensor
+(`03 rejected 01 05`, the bytes after `83 F0`).
+
+| Answer | Meaning |
+|--------|---------|
+| `01 00` | accepted, the drink starts |
+| `01 05` | refused: too little water in the tank for this drink (observed once, 2026-11-12: filter style 330 ml with a low tank, frame `D0 07 83 F0 01 05 34 7C`; the screen says "too little water for this drink" for the same drink started there) |
+
+Other codes are not known yet.
 
 Drink ids confirmed here: `01` espresso, `03` long / filter style, `06` americano, `0A` flat white,
 `0C` hot milk, `10` hot water, `16` tea, `37` cold milk, `50` americano to go, `C8` espresso (Bean
@@ -168,5 +173,5 @@ The firmware sends it every 5 s from its real RSSI and API connection.
   needs a cup already under the spout.
 - The machine refuses a brew while another runs or outside state 07; the firmware only sends one
   attempt.
-- A drink the tank has too little water for is refused at once, with no alarm and no flag in the
-  monitor (see the brew frame above); only the brew answer tells.
+- A drink the tank has too little water for is refused at once (`01 05`), with no alarm and no flag
+  in the monitor (see the brew frame above); only the brew answer tells.
