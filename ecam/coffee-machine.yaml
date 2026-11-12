@@ -119,6 +119,19 @@ text_sensor:
     lambda: |-
       if (!id(machine).has_status()) return {"unknown"};
       return id(machine).accessory_text();
+  # The machine's answer to the last brew sent from here: "03 accepted 01 00", "03 rejected ..." (the
+  # bytes after 83 f0; the screen shows nothing for a remote start it refuses) or "03 no answer".
+  # Published once per answer, so the same text twice is two answers.
+  - platform: template
+    name: Last brew
+    icon: mdi:coffee-to-go
+    entity_category: diagnostic
+    update_interval: 200ms
+    lambda: |-
+      static uint32_t seen = 0;
+      if (id(machine).brew_answers() == seen) return {};
+      seen = id(machine).brew_answers();
+      return id(machine).last_brew();
   # Raw door/container switches (monitor bytes 1-2). "Insert X" on the display comes from here,
   # not from the alarm word.
   - platform: template

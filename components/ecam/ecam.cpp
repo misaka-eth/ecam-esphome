@@ -1,4 +1,5 @@
 #include "ecam.h"
+#include <cstdio>
 #include "esphome/core/hal.h"
 #include "esphome/core/log.h"
 #include "esphome/core/defines.h"
@@ -212,9 +213,20 @@ bool Ecam::brew(int drink, int coffee_ml, int water_ml, float milk_s, int streng
   p.push_back(0x06);
   this->last_drink_ = uint8_t(drink);
   // Retrying a brew could start it twice: one attempt, generous timeout.
-  this->enqueue_(std::move(p), 1, 1500, [drink](const std::vector<uint8_t> *f) {
+  this->enqueue_(std::move(p), 1, 1500, [this, drink](const std::vector<uint8_t> *f) {
     bool ok = f && f->size() >= 6 && (*f)[4] == 0x01 && (*f)[5] == 0x00;
-    ESP_LOGI(TAG, "brew 0x%02X: %s", drink, f ? (ok ? "accepted" : "rejected") : "no answer");
+    const char *result = f ? (ok ? "accepted" : "rejected") : "no answer";
+    ESP_LOGI(TAG, "brew 0x%02X: %s -> %s", drink, result, f ? format_hex(*f).c_str() : "no answer");
+    // d0 <len> 83 f0 <answer...> <crc16>: the answer bytes say why a brew was refused.
+    char text[8];
+    snprintf(text, sizeof(text), "%02x ", drink);
+    std::string out = std::string(text) + result;
+    for (size_t i = 4; f && i + 2 < f->size(); i++) {
+      snprintf(text, sizeof(text), " %02x", (*f)[i]);
+      out += text;
+    }
+    this->last_brew_ = out;
+    this->brew_answers_++;
   }, true);
   return true;
 }

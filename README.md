@@ -24,7 +24,8 @@ Copy `example.yaml` into the ESPHome dashboard as your device file and add the k
 ## What it exposes
 
 State, progress, alarms, door/container switches, counters (water, coffees, teas, milk cleans),
-power/standby/stop buttons and a `brew` API action. The machine's Wi-Fi icon shows the Atom's real
+power/standby/stop buttons, a `brew` API action and the machine's answer to the last brew (`Last brew`:
+accepted, or rejected with the answer's bytes). The machine's Wi-Fi icon shows the Atom's real
 Wi-Fi signal and API link.
 
 ## Reverse-engineering notes

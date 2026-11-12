@@ -41,6 +41,12 @@ class Ecam : public Component, public uart::UARTDevice {
   // Debug: send any payload (hex, spaces allowed) and log the answer at INFO as "raw <tx> -> <rx>".
   void raw(const std::string &hex);
 
+  // The machine's answer to the last brew sent from here, "<drink> accepted|rejected|no answer" and then
+  // the answer's bytes after 83 f0 (accepted is 01 00). brew_answers() counts the answers, so a repeat of
+  // the same text is still a new answer.
+  const std::string &last_brew() const { return last_brew_; }
+  uint32_t brew_answers() const { return brew_answers_; }
+
   bool has_status() const { return status_valid_; }
   const Status &status() const { return status_; }
   // Standby (00) keeps the phase byte of the last drink, so the phase only counts in state 07.
@@ -89,6 +95,8 @@ class Ecam : public Component, public uart::UARTDevice {
   uint8_t wifi_icon_{0};  // 0 = follow the real wifi / Home Assistant state
   uint8_t wifi_icon_now_() const;
   uint8_t last_drink_{0};
+  std::string last_brew_;
+  uint32_t brew_answers_{0};
   std::vector<std::function<void()>> status_cbs_;
 };
 
