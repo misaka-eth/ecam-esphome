@@ -77,6 +77,11 @@ class Ecam : public Component, public uart::UARTDevice {
   void read_recipe(int drink, int profile);
   void save_recipe(int drink, int coffee_ml, int water_ml, float milk_s, int strength, int temp);
   const std::string &recipe_text() const { return this->recipe_text_; }
+  // Recipe editor: the last recipe read (read_recipe) by TLV tag, with edits staged until save_recipe_edits().
+  // A tag the drink does not have reads empty, so the entity shows unknown.
+  optional<uint16_t> recipe_value(uint8_t tag) const;
+  void set_recipe_value(uint8_t tag, uint16_t value) { this->recipe_edits_[tag] = value; }
+  void save_recipe_edits();
 
   void select_bean_adapt(uint8_t slot);
 
@@ -146,6 +151,7 @@ class Ecam : public Component, public uart::UARTDevice {
 
   void read_stats_(uint16_t start, int pages);
   void read_favorites_();
+  void save_recipe_(uint8_t drink, std::map<uint8_t, uint16_t> changes);
   std::map<uint16_t, uint32_t> params_;
   std::map<uint16_t, uint32_t> stats_;
   uint8_t active_profile_{0};
@@ -156,6 +162,10 @@ class Ecam : public Component, public uart::UARTDevice {
   std::array<std::string, 6> custom_names_;
   bool customs_valid_{false};
   std::string recipe_text_;
+  uint8_t recipe_drink_{0};
+  uint8_t recipe_profile_{0};
+  std::vector<std::pair<uint8_t, uint16_t>> recipe_tlv_;
+  std::map<uint8_t, uint16_t> recipe_edits_;
 #ifdef USE_SENSOR
   std::vector<std::pair<uint16_t, sensor::Sensor *>> counters_;
 #endif

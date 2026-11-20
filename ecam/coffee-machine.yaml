@@ -135,6 +135,16 @@ button:
     icon: mdi:coffee-outline
     on_press:
       - lambda: 'id(machine).brew(0x01, 0, 0, 0, 0, -1);'
+  - platform: template
+    name: Save recipe
+    icon: mdi:content-save
+    on_press:
+      - lambda: 'id(machine).save_recipe_edits();'
+  - platform: template
+    name: Reload recipe
+    icon: mdi:reload
+    on_press:
+      - lambda: 'id(machine).read_recipe(ecam::Ecam::drink_id(std::string(id(drink).current_option())), 0);'
   # The drink chosen in "Drink", with the active profile's stored recipe.
   - platform: template
     name: Brew drink
@@ -151,6 +161,9 @@ select:
     icon: mdi:coffee
     optimistic: true
     restore_value: true
+    # Choosing a drink loads its stored recipe (active profile) into the Recipe entities.
+    on_value:
+      - lambda: 'id(machine).read_recipe(ecam::Ecam::drink_id(x), 0);'
     options: [espresso, coffee, long, 2x espresso, doppio+, americano, cappuccino, latte macchiato, caffelatte,
               flat white, espresso macchiato, hot milk, cappuccino doppio+, cappuccino mix, hot water, tea,
               coffee pot, cortado, long black, cold milk, americano to go, bean adapt espresso,
@@ -166,6 +179,37 @@ select:
       return to_string(p);
     set_action:
       - lambda: 'id(machine).select_profile(atoi(std::string(x).c_str()));'
+      - delay: 1s
+      - lambda: 'id(machine).read_recipe(ecam::Ecam::drink_id(std::string(id(drink).current_option())), 0);'
+  # Recipe editor for the drink in "Drink": changes are kept here until "Save recipe".
+  - platform: template
+    name: Recipe strength
+    icon: mdi:coffee-outline
+    options: [pre-ground, 1 extra light, 2 light, 3 medium, 4 strong, 5 extra strong]
+    update_interval: 1s
+    lambda: |-
+      static const char *const o[] = {"pre-ground", "1 extra light", "2 light", "3 medium", "4 strong", "5 extra strong"};
+      auto v = id(machine).recipe_value(0x02);
+      if (!v || *v > 5) return {};
+      return std::string(o[*v]);
+    set_action:
+      - lambda: |-
+          std::string s(x);
+          id(machine).set_recipe_value(0x02, s == "pre-ground" ? 0 : atoi(s.c_str()));
+  - platform: template
+    name: Recipe water temperature
+    icon: mdi:thermometer-water
+    options: [low, medium, high, max]
+    update_interval: 1s
+    lambda: |-
+      static const char *const o[] = {"low", "medium", "high", "max"};
+      auto v = id(machine).recipe_value(0x0D);
+      if (!v || *v > 3) return {};
+      return std::string(o[*v]);
+    set_action:
+      - lambda: |-
+          static const char *const o[] = {"low", "medium", "high", "max"};
+          for (int i = 0; i < 4; i++) if (std::string(x) == o[i]) id(machine).set_recipe_value(0x0D, i);
   - platform: template
     name: Coffee temperature
     icon: mdi:thermometer
@@ -273,6 +317,51 @@ switch:
       - lambda: 'id(machine).write_param_bits(63, 0x80, false);'
 
 number:
+  - platform: template
+    name: Recipe coffee
+    icon: mdi:coffee
+    unit_of_measurement: ml
+    mode: box
+    min_value: 0
+    max_value: 500
+    step: 1
+    update_interval: 1s
+    lambda: |-
+      auto v = id(machine).recipe_value(0x01);
+      if (!v) return {};
+      return (float) *v;
+    set_action:
+      - lambda: 'id(machine).set_recipe_value(0x01, (uint16_t) x);'
+  - platform: template
+    name: Recipe water
+    icon: mdi:water
+    unit_of_measurement: ml
+    mode: box
+    min_value: 0
+    max_value: 500
+    step: 1
+    update_interval: 1s
+    lambda: |-
+      auto v = id(machine).recipe_value(0x0F);
+      if (!v) return {};
+      return (float) *v;
+    set_action:
+      - lambda: 'id(machine).set_recipe_value(0x0F, (uint16_t) x);'
+  - platform: template
+    name: Recipe milk
+    icon: mdi:cup
+    unit_of_measurement: s
+    mode: box
+    min_value: 0
+    max_value: 120
+    step: 0.5
+    update_interval: 1s
+    lambda: |-
+      auto v = id(machine).recipe_value(0x09);
+      if (!v) return {};
+      return *v / 10.0f;
+    set_action:
+      - lambda: 'id(machine).set_recipe_value(0x09, (uint16_t) (x * 10 + 0.5f));'
   - platform: template
     name: Autostart hour
     icon: mdi:alarm
@@ -546,6 +635,8 @@ binary_sensor:
             s->publish_state(NAN);
     on_press:
       - lambda: 'id(machine).refresh(true);'
+      - delay: 2s
+      - lambda: 'id(machine).read_recipe(ecam::Ecam::drink_id(std::string(id(drink).current_option())), 0);'
       - script.execute: read_counters
   - platform: template
     id: ready

@@ -625,10 +625,15 @@ void Ecam::read_recipe(int drink, int profile) {
   }
   this->enqueue_({0xA6, 0xF0, prof, uint8_t(drink)}, 2, 500, [this, prof, drink](const std::vector<uint8_t> *f) {
     std::string out = "profile " + to_string(prof) + " " + drink_name(drink) + ":";
+    this->recipe_drink_ = uint8_t(drink);
+    this->recipe_profile_ = prof;
+    this->recipe_tlv_.clear();
+    this->recipe_edits_.clear();
     if (!f || f->size() < 8) {
       out += " no answer";
     } else {
-      for (auto &tv : parse_tlv(f->data() + 6, f->size() - 8)) {
+      this->recipe_tlv_ = parse_tlv(f->data() + 6, f->size() - 8);
+      for (auto &tv : this->recipe_tlv_) {
         const char *n = tag_name(tv.first);
         out += " ";
         out += n ? n : format_hex(tv.first);
@@ -643,31 +648,67 @@ void Ecam::read_recipe(int drink, int profile) {
 }
 
 void Ecam::save_recipe(int drink, int coffee_ml, int water_ml, float milk_s, int strength, int temp) {
-  if (drink <= 0 || drink > 0xFF || !this->active_profile_) {
-    ESP_LOGW(TAG, "save recipe: bad drink or profile not known yet");
+  if (drink <= 0 || drink > 0xFF) {
+    ESP_LOGW(TAG, "save recipe: bad drink");
     return;
   }
-  // Read the stored recipe of the active profile, change the given values, save it back
-  // (op 00, tail 05, as the app's delete with tail 04). Values <= 0 stay as stored.
-  this->enqueue_({0xA6, 0xF0, this->active_profile_, uint8_t(drink)}, 2, 500,
-                 [this, drink, coffee_ml, water_ml, milk_s, strength, temp](const std::vector<uint8_t> *f) {
+  // Values <= 0 (temp < 0) stay as stored.
+  std::map<uint8_t, uint16_t> changes;
+  if (coffee_ml > 0) changes[0x01] = coffee_ml;
+  if (water_ml > 0) changes[0x0F] = water_ml;
+  if (milk_s > 0) changes[0x09] = uint16_t(milk_s * 10 + 0.5f);
+  if (strength > 0) changes[0x02] = strength;
+  if (temp >= 0 && temp <= 3) changes[0x0D] = temp;
+  this->save_recipe_(uint8_t(drink), std::move(changes));
+}
+
+optional<uint16_t> Ecam::recipe_value(uint8_t tag) const {
+  if (!this->status_valid_)
+    return {};
+  for (auto &tv : this->recipe_tlv_) {
+    if (tv.first != tag)
+      continue;
+    auto it = this->recipe_edits_.find(tag);
+    return it != this->recipe_edits_.end() ? it->second : tv.second;
+  }
+  return {};
+}
+
+void Ecam::save_recipe_edits() {
+  if (!this->recipe_drink_ || this->recipe_edits_.empty()) {
+    ESP_LOGI(TAG, "save recipe: nothing changed");
+    return;
+  }
+  if (this->recipe_profile_ != this->active_profile_) {
+    ESP_LOGW(TAG, "save recipe: the recipe shown is not from the active profile, read it again");
+    return;
+  }
+  this->save_recipe_(this->recipe_drink_, this->recipe_edits_);
+}
+
+// Read the stored recipe of the active profile, change the given tags, save it back (op 00, tail 05, as the
+// app's delete with tail 04). Tags the recipe does not have are not added.
+void Ecam::save_recipe_(uint8_t drink, std::map<uint8_t, uint16_t> changes) {
+  if (!this->active_profile_) {
+    ESP_LOGW(TAG, "save recipe: profile not known yet");
+    return;
+  }
+  // The app pairs 0d (water temp 0..3) with 1b 01 on max and 1b 04 otherwise.
+  auto t = changes.find(0x0D);
+  if (t != changes.end())
+    changes[0x1B] = t->second == 3 ? 0x01 : 0x04;
+  this->enqueue_({0xA6, 0xF0, this->active_profile_, drink}, 2, 500,
+                 [this, drink, changes](const std::vector<uint8_t> *f) {
     if (!f || f->size() < 8) {
       ESP_LOGW(TAG, "save recipe: read failed, nothing written");
       return;
     }
-    std::vector<uint8_t> p{0x83, 0xF0, uint8_t(drink), 0x00};
+    std::vector<uint8_t> p{0x83, 0xF0, drink, 0x00};
     for (auto &tv : parse_tlv(f->data() + 6, f->size() - 8)) {
-      uint16_t v = tv.second;
-      switch (tv.first) {
-        case 0x27: continue;
-        case 0x01: if (coffee_ml > 0) v = coffee_ml; break;
-        case 0x0F: if (water_ml > 0) v = water_ml; break;
-        case 0x09: if (milk_s > 0) v = uint16_t(milk_s * 10 + 0.5f); break;
-        case 0x02: if (strength > 0) v = strength; break;
-        case 0x0D: if (temp >= 0 && temp <= 3) v = temp; break;
-        case 0x1B: if (temp >= 0 && temp <= 3) v = temp == 3 ? 0x01 : 0x04; break;
-      }
-      put_tlv(p, tv.first, v);
+      if (tv.first == 0x27)
+        continue;
+      auto c = changes.find(tv.first);
+      put_tlv(p, tv.first, c != changes.end() ? c->second : tv.second);
     }
     p.insert(p.end(), {0x27, 0x00, 0x05});
     std::string tx = format_hex(p);
