@@ -36,8 +36,11 @@ Copy `example.yaml` into the ESPHome dashboard as your device file and add the k
 - Diagnostics: serial number, production date, EEPROM version, PIN (disabled by default).
 - The machine's Wi-Fi icon shows the Atom's real Wi-Fi signal and API link.
 
-A setting the machine does not have is ignored or reads back unchanged; `save_recipe` and
-`select_bean_adapt` follow the app's frames but are not confirmed on a machine yet.
+- A recipe editor: choosing a drink in `Drink` loads its stored recipe (active profile) into
+  `Recipe coffee / water / milk / strength / water temperature`; `Save recipe` writes it back.
+
+A setting the machine does not have is ignored or reads back unchanged. `select_bean_adapt` follows the
+app's frame but is not confirmed on a machine yet.
 
 ## Reverse-engineering notes
 

@@ -45,6 +45,18 @@ answer   D0 LEN payload CRC16
 | `B9 F0 <slot>` / `BB F0 <slot> <name 40 B> <grind> <temp> <aroma> <blend> <roast>` | select / write Bean Adapt slot | |
 | `ED F0 <icon>` | Wi-Fi icon on the display, see below | |
 
+Answer layouts (confirmed on an ECAM450.76.T through the firmware; the profile and custom-drink lists
+make answers up to ~140 bytes, so a reader must not cap frames at 64):
+
+| Request | Answer payload |
+|---------|----------------|
+| `A9 F0` | active profile 1..4 in the last byte before the CRC |
+| `A4 F0 01 04` | from byte 6: 4 × (name 20 B UTF-16BE, icon, mug) |
+| `AA F0 01 06` | from byte 6: 6 × (name 20 B UTF-16BE, image); unused slots read "Rezept n" / `visible=0` |
+| `AC F0 <profile>` | bytes 5..15: 11 drink ids, newest first, `00` = empty |
+| `A6 F0 <profile> <bev>` | from byte 6: the recipe TLVs |
+| `A2 0F <start> 0A` | from byte 4: up to 10 × (`id u16`, `u32`); page on with `start = last id + 1` |
+
 Deleting a profile is a rename to an all-zero name. Deleting a custom drink: `83 F0 <E6..EB> 00 ... 04`
 (ACK `00 01`).
 
@@ -52,7 +64,7 @@ Deleting a profile is a rename to an all-zero name. Deleting a custom drink: `83
 
 | Byte | Meaning |
 |------|---------|
-| 0 | accessory: 00 none, 01 hot-water spout, 02 milk jug, 04 milk jug (clean position), 06 cold-milk jug |
+| 0 | accessory: 00 none, 01 hot-water spout, 02 milk jug, 04 milk jug (clean position), 06 cold-milk jug; 07 seen once with the spout not fully inserted |
 | 1–2 | **switches**, u16 little-endian (below) |
 | 3–4 | **alarms**, u16 little-endian (below) |
 | 5 | state: 00 standby, 01 heating, 02 turning off, 04 descaling, 07 ready / brewing, 08 rinsing, 0A milk, 0B hot water, 0C milk clean |
@@ -94,7 +106,7 @@ Boiler temperature and flow are **not** exposed: the service menu shows them, bu
 | `0D` | water temperature 0 low … 3 max (tea / hot water) |
 | `0F` | water ml (u16) |
 | `19` | visible in menu |
-| `1B` | index length: `01` with max temperature, `04` otherwise |
+| `1B` | index length: `01` with max temperature, `04` otherwise. Also changes from `01` to `04` when a recipe is saved with a custom amount, so it may be the cup-size preset (`04` = custom) |
 | `1C` | accessory (01 spout, 02 jug) |
 | `27` | `27 01` on start, `27 00` on save (sent by the app; not required) |
 
@@ -115,6 +127,10 @@ answer frame (`brew 0x03: rejected -> d0...`) and publishes it as the `Last brew
 | `01 05` | refused: too little water in the tank for this drink (observed once, 2026-11-12: filter style 330 ml with a low tank, frame `D0 07 83 F0 01 05 34 7C`; the screen says "too little water for this drink" for the same drink started there) |
 
 Other codes are not known yet.
+
+Saving a recipe (confirmed): re-send the stored recipe (`A6`) with the changed values, op `00`, the
+app's `27 00` and tail `05`, e.g. `83 F0 01 00 08 00 01 00 3C 1B 01 02 04 19 01 27 00 05` for espresso
+60 ml. Reading the recipe back shows the new values; the machine set `1B` to `04` by itself.
 
 Drink ids confirmed here: `01` espresso, `03` long / filter style, `06` americano, `0A` flat white,
 `0C` hot milk, `10` hot water, `16` tea, `37` cold milk, `50` americano to go, `C8` espresso (Bean
@@ -143,6 +159,11 @@ The service menu shows the same ids as `PAR <decimal>`.
 
 Write bit flags read-modify-write; a wrong full-word write changes several settings at once.
 The Statistics screen's "Total with hot milk" is PAR 3001 plus hot milk alone (3015); "Total teas" is 3025.
+PAR 205–209 hold the serial number as 4 ASCII bytes each (big-endian, NUL/space padded). PAR 200–203 read
+`523 10 3 22` on a machine built in autumn 2022: 201–203 look like month / day / year (2022-10-03),
+200 is unknown. PAR 199 read `0xE00C`. Settings the app hides for a model (autostart, 12-hour clock,
+cup light) still read and write on the ECAM450.76.T.
+
 Descale and filter counters were not found (PAR 105, 108, 116 stay 0).
 
 Service menu reading on this machine (for reference): PAR 400 = PAR 402 = 221680, PAR 401/403/404/405 = 0,
