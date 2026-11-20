@@ -1,5 +1,7 @@
 #include "ecam.h"
 #include <cstdio>
+#include <cstdlib>
+#include <strings.h>
 #include "esphome/core/hal.h"
 #include "esphome/core/log.h"
 #include "esphome/core/defines.h"
@@ -14,6 +16,20 @@ namespace esphome {
 namespace ecam {
 
 static const char *const TAG = "ecam";
+
+// Newer ESPHome removed the std::string-returning format_hex(); local replacement.
+static std::string format_hex(const uint8_t *data, size_t len) {
+  static const char *const DIGITS = "0123456789abcdef";
+  std::string s;
+  s.reserve(len * 2);
+  for (size_t i = 0; i < len; i++) {
+    s += DIGITS[data[i] >> 4];
+    s += DIGITS[data[i] & 0x0F];
+  }
+  return s;
+}
+static std::string format_hex(const std::vector<uint8_t> &v) { return format_hex(v.data(), v.size()); }
+static std::string format_hex(uint8_t b) { return format_hex(&b, 1); }
 
 // Request: 0d <len> <payload> <crc16>; answer: d0 <len> <payload> <crc16>; len = total - 1.
 static const uint8_t REQ = 0x0D;
@@ -32,7 +48,7 @@ uint16_t Ecam::crc_(const uint8_t *data, size_t len) {
   return c;
 }
 
-void Ecam::setup() { this->rx_.reserve(64); }
+void Ecam::setup() { this->rx_.reserve(256); }
 
 // Icon on the machine display (ed f0 3x, mapped by hand on the Eletta Explore):
 // 35 grey = no wifi, 32 cloud crossed = wifi but no Home Assistant, otherwise bars by RSSI:
@@ -91,7 +107,8 @@ void Ecam::loop() {
     this->rx_.push_back(b);
     if (this->rx_.size() >= 2) {
       size_t total = size_t(this->rx_[1]) + 1;
-      if (this->rx_[1] < 4 || total > 64) {
+      // Profile and custom-drink lists run to ~140 bytes; LEN is one byte, so a frame is at most 256.
+      if (this->rx_[1] < 4) {
         this->rx_.clear();
         continue;
       }
@@ -142,6 +159,10 @@ void Ecam::loop() {
     this->status_valid_ = false;
     for (auto &cb : this->status_cbs_)
       cb();
+#ifdef USE_SENSOR
+    for (auto &c : this->counters_)
+      c.second->publish_state(NAN);
+#endif
   }
 
   if (!this->queue_.empty()) {
@@ -241,12 +262,505 @@ void Ecam::stop() {
   }, true);
 }
 
+static uint32_t be32(const uint8_t *p) {
+  return (uint32_t(p[0]) << 24) | (uint32_t(p[1]) << 16) | (uint32_t(p[2]) << 8) | p[3];
+}
+
 void Ecam::read_param(uint16_t pid, std::function<void(uint32_t)> cb) {
   this->enqueue_({0x95, 0x0F, uint8_t(pid >> 8), uint8_t(pid & 0xFF), 0x01}, 2, 500,
-                 [cb](const std::vector<uint8_t> *f) {
-                   if (f && f->size() >= 12)
-                     cb((uint32_t((*f)[6]) << 24) | (uint32_t((*f)[7]) << 16) | (uint32_t((*f)[8]) << 8) | (*f)[9]);
+                 [this, pid, cb](const std::vector<uint8_t> *f) {
+                   if (!f || f->size() < 12)
+                     return;
+                   uint32_t v = be32(f->data() + 6);
+                   this->params_[pid] = v;
+                   if (cb)
+                     cb(v);
                  });
+}
+
+void Ecam::write_param(uint16_t pid, uint32_t value) {
+  this->enqueue_({0x90, 0x0F, uint8_t(pid >> 8), uint8_t(pid & 0xFF), uint8_t(value >> 24), uint8_t(value >> 16),
+                  uint8_t(value >> 8), uint8_t(value)},
+                 2, 800, [this, pid, value](const std::vector<uint8_t> *f) {
+                   bool ok = f && f->size() >= 9 && (*f)[6] == 0x00;
+                   ESP_LOGI(TAG, "write PAR %u = %u: %s", pid, (unsigned) value, f ? (ok ? "ok" : "rejected") : "no answer");
+                   this->read_param(pid);
+                 }, true);
+}
+
+void Ecam::write_param_bits(uint16_t pid, uint32_t mask, bool on) {
+  // Read first: the word holds other settings, and a stale cache would overwrite them.
+  this->read_param(pid, [this, pid, mask, on](uint32_t cur) {
+    uint32_t v = on ? (cur | mask) : (cur & ~mask);
+    if (v != cur)
+      this->write_param(pid, v);
+  });
+}
+
+optional<uint32_t> Ecam::param(uint16_t pid) const {
+  if (!this->status_valid_)
+    return {};
+  auto it = this->params_.find(pid);
+  if (it == this->params_.end())
+    return {};
+  return it->second;
+}
+
+optional<bool> Ecam::param_bit(uint16_t pid, uint32_t mask) const {
+  auto v = this->param(pid);
+  if (!v)
+    return {};
+  return (*v & mask) != 0;
+}
+
+optional<uint32_t> Ecam::stat(uint16_t id) const {
+  auto it = this->stats_.find(id);
+  if (!this->status_valid_ || it == this->stats_.end())
+    return {};
+  return it->second;
+}
+
+// ---- text helpers: names are 20 bytes UTF-16BE, zero padded (10 characters, BMP only).
+
+static std::string utf16be_to_utf8(const uint8_t *p, size_t n) {
+  std::string out;
+  for (size_t i = 0; i + 1 < n; i += 2) {
+    uint16_t c = (uint16_t(p[i]) << 8) | p[i + 1];
+    if (c == 0)
+      break;
+    if (c < 0x80) {
+      out += char(c);
+    } else if (c < 0x800) {
+      out += char(0xC0 | (c >> 6));
+      out += char(0x80 | (c & 0x3F));
+    } else {
+      out += char(0xE0 | (c >> 12));
+      out += char(0x80 | ((c >> 6) & 0x3F));
+      out += char(0x80 | (c & 0x3F));
+    }
+  }
+  return out;
+}
+
+static std::vector<uint8_t> utf8_to_utf16be20(const std::string &s) {
+  std::vector<uint8_t> out;
+  for (size_t i = 0; i < s.size() && out.size() < 20;) {
+    uint8_t b = s[i];
+    uint32_t c;
+    size_t n;
+    if (b < 0x80) { c = b; n = 1; }
+    else if ((b & 0xE0) == 0xC0) { c = b & 0x1F; n = 2; }
+    else if ((b & 0xF0) == 0xE0) { c = b & 0x0F; n = 3; }
+    else { c = '?'; n = (b & 0xF8) == 0xF0 ? 4 : 1; }  // outside the BMP
+    for (size_t k = 1; k < n && i + k < s.size(); k++)
+      c = (c << 6) | (uint8_t(s[i + k]) & 0x3F);
+    if (n == 4)
+      c = '?';
+    i += n;
+    out.push_back(uint8_t(c >> 8));
+    out.push_back(uint8_t(c));
+  }
+  out.resize(20, 0);
+  return out;
+}
+
+// ---- refresh
+
+void Ecam::refresh(bool device_info) {
+  // Settings: 50 water hardness, 61 coffee temperature, 62 auto-off, 63 flags, 64/65 autostart time.
+  for (uint16_t pid : {50, 61, 62, 63, 64, 65})
+    this->read_param(pid);
+  if (device_info) {
+    // 199 EEPROM version, 200-203 production date, 205-209 serial number, 210 PIN.
+    for (uint16_t pid : {199, 200, 201, 202, 203, 205, 206, 207, 208, 209, 210})
+      this->read_param(pid);
+  }
+  // Active profile: answer a9 f0 .. <slot>, the last byte before the CRC.
+  this->enqueue_({0xA9, 0xF0}, 2, 500, [this](const std::vector<uint8_t> *f) {
+    if (!f || f->size() < 7)
+      return;
+    uint8_t slot = (*f)[f->size() - 3];
+    if (slot >= 1 && slot <= 4)
+      this->active_profile_ = slot;
+    this->read_favorites_();
+  });
+  // Profile names: a4 f0 01 04 -> 4 x (name 20 B, icon, mug) from byte 6.
+  this->enqueue_({0xA4, 0xF0, 0x01, 0x04}, 2, 500, [this](const std::vector<uint8_t> *f) {
+    if (!f || f->size() < 6 + 4 * 22 + 2)
+      return;
+    for (int i = 0; i < 4; i++)
+      this->profile_names_[i] = utf16be_to_utf8(f->data() + 6 + i * 22, 20);
+    this->profiles_valid_ = true;
+  });
+  // Custom drink names: aa f0 01 06 -> 6 x (name 20 B, image) from byte 6.
+  this->enqueue_({0xAA, 0xF0, 0x01, 0x06}, 2, 500, [this](const std::vector<uint8_t> *f) {
+    if (!f || f->size() < 6 + 6 * 21 + 2)
+      return;
+    for (int i = 0; i < 6; i++)
+      this->custom_names_[i] = utf16be_to_utf8(f->data() + 6 + i * 21, 20);
+    this->customs_valid_ = true;
+  });
+  this->read_stats_(0, 0);
+}
+
+// a2 0f <start u16> 0a -> up to 10 x (id u16, value u32) from byte 4, ids >= start.
+void Ecam::read_stats_(uint16_t start, int pages) {
+  if (start == 0 && pages == 0)
+    this->stats_.clear();
+  this->enqueue_({0xA2, 0x0F, uint8_t(start >> 8), uint8_t(start & 0xFF), 0x0A}, 2, 500,
+                 [this, start, pages](const std::vector<uint8_t> *f) {
+                   int last = -1;
+                   for (size_t i = 4; f && i + 6 <= f->size() - 2; i += 6) {
+                     uint16_t id = (uint16_t((*f)[i]) << 8) | (*f)[i + 1];
+                     this->stats_[id] = be32(f->data() + i + 2);
+                     last = id;
+                   }
+                   // More pages while the ids keep growing; the cap guards against a machine that repeats.
+                   if (last >= start && last < 0xFFFF && pages < 40) {
+                     this->read_stats_(last + 1, pages + 1);
+                     return;
+                   }
+                   ESP_LOGD(TAG, "statistics: %u counters", (unsigned) this->stats_.size());
+#ifdef USE_SENSOR
+                   for (auto &c : this->counters_) {
+                     auto it = this->stats_.find(c.first);
+                     // A counter the machine does not list has never been used.
+                     c.second->publish_state(it == this->stats_.end() ? 0.0f : float(it->second));
+                   }
+#endif
+                 });
+}
+
+// ---- profiles
+
+void Ecam::select_profile(uint8_t slot) {
+  if (slot < 1 || slot > 4)
+    return;
+  this->enqueue_({0xA9, 0xF0, slot}, 2, 800, [this, slot](const std::vector<uint8_t> *f) {
+    ESP_LOGI(TAG, "select profile %u: %s", slot, f ? "ok" : "no answer");
+    if (f)
+      this->active_profile_ = slot;
+    this->read_favorites_();
+  }, true);
+}
+
+optional<std::string> Ecam::profile_name(uint8_t slot) const {
+  if (!this->status_valid_ || !this->profiles_valid_ || slot < 1 || slot > 4)
+    return {};
+  return this->profile_names_[slot - 1];
+}
+
+void Ecam::rename_profile(uint8_t slot, const std::string &name) {
+  if (slot < 1 || slot > 4)
+    return;
+  // The write keeps the mug byte: read the profile first (a4 f0 <slot> 01 -> ... <mug> crc16).
+  this->enqueue_({0xA4, 0xF0, slot, 0x01}, 2, 500, [this, slot, name](const std::vector<uint8_t> *f) {
+    if (!f || f->size() < 8) {
+      ESP_LOGW(TAG, "rename profile %u: read failed, nothing written", slot);
+      return;
+    }
+    uint8_t mug = (*f)[f->size() - 3];
+    std::vector<uint8_t> p{0xA5, 0xF0, slot, slot};
+    auto n = utf8_to_utf16be20(name);
+    p.insert(p.end(), n.begin(), n.end());
+    p.push_back(0x01);
+    p.push_back(mug);
+    this->enqueue_(std::move(p), 2, 800, [this, slot](const std::vector<uint8_t> *f) {
+      ESP_LOGI(TAG, "rename profile %u: %s", slot, f ? ((*f)[4] == 0 ? "ok" : "rejected") : "no answer");
+      this->refresh(false);
+    }, true);
+  }, true);
+}
+
+// ---- favourites (ac f0 <profile> -> d0 12 ac f0 <profile> <11 ids, newest first, 00 = empty>)
+
+void Ecam::read_favorites_() {
+  if (!this->active_profile_)
+    return;
+  this->enqueue_({0xAC, 0xF0, this->active_profile_}, 2, 500, [this](const std::vector<uint8_t> *f) {
+    if (!f || f->size() < 16 + 2)
+      return;
+    this->favorites_.clear();
+    for (size_t i = 5; i < 16; i++)
+      if ((*f)[i])
+        this->favorites_.push_back((*f)[i]);
+    this->favorites_valid_ = true;
+  });
+}
+
+optional<std::string> Ecam::favorites_text() const {
+  if (!this->status_valid_ || !this->favorites_valid_)
+    return {};
+  std::string out;
+  for (uint8_t id : this->favorites_) {
+    if (!out.empty())
+      out += ", ";
+    out += drink_name(id);
+  }
+  return out.empty() ? std::string("none") : out;
+}
+
+void Ecam::set_favorites(const std::string &drinks) {
+  if (!this->active_profile_) {
+    ESP_LOGW(TAG, "favourites: active profile not known yet");
+    return;
+  }
+  // Comma-separated names or hex ids, newest first; the app always writes all 11 entries, 00 = empty.
+  std::vector<uint8_t> p{0xAD, 0xF0, this->active_profile_};
+  size_t pos = 0;
+  while (pos <= drinks.size()) {
+    size_t end = drinks.find(',', pos);
+    if (end == std::string::npos)
+      end = drinks.size();
+    std::string item = drinks.substr(pos, end - pos);
+    item.erase(0, item.find_first_not_of(' '));
+    item.erase(item.find_last_not_of(' ') + 1);
+    pos = end + 1;
+    if (item.empty())
+      continue;
+    int id = drink_id(item);
+    if (id <= 0) {
+      ESP_LOGW(TAG, "favourites: unknown drink '%s', nothing written", item.c_str());
+      return;
+    }
+    if (p.size() == 3 + 11) {
+      ESP_LOGW(TAG, "favourites: at most 11, nothing written");
+      return;
+    }
+    p.push_back(uint8_t(id));
+  }
+  p.resize(3 + 11, 0);
+  this->enqueue_(std::move(p), 2, 800, [this](const std::vector<uint8_t> *f) {
+    ESP_LOGI(TAG, "favourites: %s", f ? "ok" : "no answer");
+    this->read_favorites_();
+  }, true);
+}
+
+// ---- custom drinks (slots 1..6 = drinks e6..eb)
+
+optional<std::string> Ecam::custom_drinks_text() const {
+  if (!this->status_valid_ || !this->customs_valid_)
+    return {};
+  std::string out;
+  for (int i = 0; i < 6; i++) {
+    if (this->custom_names_[i].empty())
+      continue;
+    if (!out.empty())
+      out += ", ";
+    out += to_string(i + 1) + " " + this->custom_names_[i];
+  }
+  return out.empty() ? std::string("none") : out;
+}
+
+// Recipe TLVs: tags 01, 09, 0f carry a u16, the rest a u8.
+static bool tag16(uint8_t t) { return t == 0x01 || t == 0x09 || t == 0x0F; }
+
+static std::vector<std::pair<uint8_t, uint16_t>> parse_tlv(const uint8_t *p, size_t n) {
+  std::vector<std::pair<uint8_t, uint16_t>> out;
+  for (size_t i = 0; i < n;) {
+    uint8_t t = p[i];
+    size_t w = tag16(t) ? 2 : 1;
+    if (i + 1 + w > n)
+      break;
+    out.push_back({t, w == 2 ? uint16_t((p[i + 1] << 8) | p[i + 2]) : p[i + 1]});
+    i += 1 + w;
+  }
+  return out;
+}
+
+static void put_tlv(std::vector<uint8_t> &p, uint8_t t, uint16_t v) {
+  p.push_back(t);
+  if (tag16(t))
+    p.push_back(v >> 8);
+  p.push_back(v & 0xFF);
+}
+
+void Ecam::delete_custom_drink(uint8_t slot) {
+  if (slot < 1 || slot > 6 || !this->active_profile_)
+    return;
+  uint8_t bev = 0xE5 + slot;
+  // The app deletes by re-sending the stored recipe with 0b ff, 27 00 and tail 04 (save is 05).
+  this->enqueue_({0xA6, 0xF0, this->active_profile_, bev}, 2, 500, [this, bev](const std::vector<uint8_t> *f) {
+    if (!f || f->size() < 8) {
+      ESP_LOGW(TAG, "delete custom drink: read failed, nothing sent");
+      return;
+    }
+    std::vector<uint8_t> p{0x83, 0xF0, bev, 0x00};
+    for (auto &tv : parse_tlv(f->data() + 6, f->size() - 8))
+      if (tv.first != 0x0B && tv.first != 0x19 && tv.first != 0x27)
+        put_tlv(p, tv.first, tv.second);
+    p.insert(p.end(), {0x0B, 0xFF, 0x27, 0x00, 0x04});
+    this->enqueue_(std::move(p), 1, 1500, [this, bev](const std::vector<uint8_t> *f) {
+      bool ok = f && f->size() >= 6 && (*f)[4] == 0x00 && (*f)[5] == 0x01;
+      ESP_LOGI(TAG, "delete custom drink %02X: %s", bev, f ? (ok ? "ok" : "rejected") : "no answer");
+      this->refresh(false);
+    }, true);
+  }, true);
+}
+
+// ---- recipes
+
+static const char *tag_name(uint8_t t) {
+  switch (t) {
+    case 0x01: return "coffee_ml";
+    case 0x02: return "strength";
+    case 0x08: return "2x";
+    case 0x09: return "milk_0.1s";
+    case 0x0B: return "froth";
+    case 0x0C: return "inversion";
+    case 0x0D: return "water_temp";
+    case 0x0F: return "water_ml";
+    case 0x19: return "visible";
+    case 0x1B: return "index_length";
+    case 0x1C: return "accessory";
+    default: return nullptr;
+  }
+}
+
+void Ecam::read_recipe(int drink, int profile) {
+  uint8_t prof = profile > 0 ? uint8_t(profile) : this->active_profile_;
+  if (drink <= 0 || drink > 0xFF || prof < 1 || prof > 4) {
+    ESP_LOGW(TAG, "recipe: bad drink or profile not known yet");
+    return;
+  }
+  this->enqueue_({0xA6, 0xF0, prof, uint8_t(drink)}, 2, 500, [this, prof, drink](const std::vector<uint8_t> *f) {
+    std::string out = "profile " + to_string(prof) + " " + drink_name(drink) + ":";
+    this->recipe_drink_ = uint8_t(drink);
+    this->recipe_profile_ = prof;
+    this->recipe_tlv_.clear();
+    this->recipe_edits_.clear();
+    if (!f || f->size() < 8) {
+      out += " no answer";
+    } else {
+      this->recipe_tlv_ = parse_tlv(f->data() + 6, f->size() - 8);
+      for (auto &tv : this->recipe_tlv_) {
+        const char *n = tag_name(tv.first);
+        out += " ";
+        out += n ? n : format_hex(tv.first);
+        out += "=" + to_string(tv.second) + ",";
+      }
+      if (out.back() == ',')
+        out.pop_back();
+    }
+    ESP_LOGI(TAG, "recipe %s", out.c_str());
+    this->recipe_text_ = out;
+  });
+}
+
+void Ecam::save_recipe(int drink, int coffee_ml, int water_ml, float milk_s, int strength, int temp) {
+  if (drink <= 0 || drink > 0xFF) {
+    ESP_LOGW(TAG, "save recipe: bad drink");
+    return;
+  }
+  // Values <= 0 (temp < 0) stay as stored.
+  std::map<uint8_t, uint16_t> changes;
+  if (coffee_ml > 0) changes[0x01] = coffee_ml;
+  if (water_ml > 0) changes[0x0F] = water_ml;
+  if (milk_s > 0) changes[0x09] = uint16_t(milk_s * 10 + 0.5f);
+  if (strength > 0) changes[0x02] = strength;
+  if (temp >= 0 && temp <= 3) changes[0x0D] = temp;
+  this->save_recipe_(uint8_t(drink), std::move(changes));
+}
+
+optional<uint16_t> Ecam::recipe_value(uint8_t tag) const {
+  if (!this->status_valid_)
+    return {};
+  for (auto &tv : this->recipe_tlv_) {
+    if (tv.first != tag)
+      continue;
+    auto it = this->recipe_edits_.find(tag);
+    return it != this->recipe_edits_.end() ? it->second : tv.second;
+  }
+  return {};
+}
+
+void Ecam::save_recipe_edits() {
+  if (!this->recipe_drink_ || this->recipe_edits_.empty()) {
+    ESP_LOGI(TAG, "save recipe: nothing changed");
+    return;
+  }
+  if (this->recipe_profile_ != this->active_profile_) {
+    ESP_LOGW(TAG, "save recipe: the recipe shown is not from the active profile, read it again");
+    return;
+  }
+  this->save_recipe_(this->recipe_drink_, this->recipe_edits_);
+}
+
+// Read the stored recipe of the active profile, change the given tags, save it back (op 00, tail 05, as the
+// app's delete with tail 04). Tags the recipe does not have are not added.
+void Ecam::save_recipe_(uint8_t drink, std::map<uint8_t, uint16_t> changes) {
+  if (!this->active_profile_) {
+    ESP_LOGW(TAG, "save recipe: profile not known yet");
+    return;
+  }
+  // The app pairs 0d (water temp 0..3) with 1b 01 on max and 1b 04 otherwise.
+  auto t = changes.find(0x0D);
+  if (t != changes.end())
+    changes[0x1B] = t->second == 3 ? 0x01 : 0x04;
+  this->enqueue_({0xA6, 0xF0, this->active_profile_, drink}, 2, 500,
+                 [this, drink, changes](const std::vector<uint8_t> *f) {
+    if (!f || f->size() < 8) {
+      ESP_LOGW(TAG, "save recipe: read failed, nothing written");
+      return;
+    }
+    std::vector<uint8_t> p{0x83, 0xF0, drink, 0x00};
+    for (auto &tv : parse_tlv(f->data() + 6, f->size() - 8)) {
+      if (tv.first == 0x27)
+        continue;
+      auto c = changes.find(tv.first);
+      put_tlv(p, tv.first, c != changes.end() ? c->second : tv.second);
+    }
+    p.insert(p.end(), {0x27, 0x00, 0x05});
+    std::string tx = format_hex(p);
+    this->enqueue_(std::move(p), 1, 1500, [this, drink, tx](const std::vector<uint8_t> *f) {
+      ESP_LOGI(TAG, "save recipe %s -> %s", tx.c_str(), f ? format_hex(*f).c_str() : "no answer");
+      this->read_recipe(drink, 0);
+    }, true);
+  }, true);
+}
+
+void Ecam::select_bean_adapt(uint8_t slot) {
+  this->enqueue_({0xB9, 0xF0, slot}, 2, 800, [slot](const std::vector<uint8_t> *f) {
+    ESP_LOGI(TAG, "bean adapt slot %u: %s", slot, f ? format_hex(*f).c_str() : "no answer");
+  }, true);
+}
+
+// ---- drink names (confirmed on the Eletta Explore: 01 03 06 0a 0c 10 16 37 50 c8 e6-eb; the rest are
+// the usual ECAM ids)
+
+static const struct {
+  uint8_t id;
+  const char *name;
+} DRINKS[] = {
+    {0x01, "espresso"},        {0x02, "coffee"},           {0x03, "long"},
+    {0x04, "2x espresso"},     {0x05, "doppio+"},          {0x06, "americano"},
+    {0x07, "cappuccino"},      {0x08, "latte macchiato"},  {0x09, "caffelatte"},
+    {0x0A, "flat white"},      {0x0B, "espresso macchiato"}, {0x0C, "hot milk"},
+    {0x0D, "cappuccino doppio+"}, {0x0F, "cappuccino mix"}, {0x10, "hot water"},
+    {0x16, "tea"},             {0x17, "coffee pot"},       {0x18, "cortado"},
+    {0x1B, "long black"},      {0x37, "cold milk"},        {0x50, "americano to go"},
+    {0xC8, "bean adapt espresso"}, {0xE6, "custom 1"},     {0xE7, "custom 2"},
+    {0xE8, "custom 3"},        {0xE9, "custom 4"},         {0xEA, "custom 5"},
+    {0xEB, "custom 6"},
+};
+
+std::string Ecam::drink_name(uint8_t id) {
+  for (auto &d : DRINKS)
+    if (d.id == id)
+      return d.name;
+  return "0x" + format_hex(id);
+}
+
+int Ecam::drink_id(const std::string &name) {
+  for (auto &d : DRINKS)
+    if (strcasecmp(d.name, name.c_str()) == 0)
+      return d.id;
+  const char *s = name.c_str();
+  if (s[0] == '0' && (s[1] == 'x' || s[1] == 'X'))
+    s += 2;
+  char *end;
+  long v = strtol(s, &end, 16);
+  return (*s && *end == 0 && v > 0 && v <= 0xFF) ? int(v) : -1;
 }
 
 void Ecam::raw(const std::string &hex) {
