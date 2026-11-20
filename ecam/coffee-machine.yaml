@@ -55,6 +55,42 @@ api:
         temp: int
       then:
         - lambda: 'id(machine).brew(drink, coffee_ml, water_ml, milk_s, strength, temp);'
+    # Stored recipes. drink: name ("flat white") or hex id ("0a"); profile 0 = active. The text goes to
+    # the Recipe sensor. save_recipe changes the given values of the active profile's recipe and keeps
+    # the rest (0 / negative = keep, temp -1 = keep).
+    - action: read_recipe
+      variables:
+        drink: string
+        profile: int
+      then:
+        - lambda: 'id(machine).read_recipe(ecam::Ecam::drink_id(drink), profile);'
+    - action: save_recipe
+      variables:
+        drink: string
+        coffee_ml: int
+        water_ml: int
+        milk_s: float
+        strength: int
+        temp: int
+      then:
+        - lambda: 'id(machine).save_recipe(ecam::Ecam::drink_id(drink), coffee_ml, water_ml, milk_s, strength, temp);'
+    # Favourites of the active profile: comma-separated names or hex ids, newest first, max 11; "" clears.
+    - action: set_favorites
+      variables:
+        drinks: string
+      then:
+        - lambda: 'id(machine).set_favorites(drinks);'
+    # Removes custom drink slot 1..6 (drinks e6..eb) from the machine menu.
+    - action: delete_custom_drink
+      variables:
+        slot: int
+      then:
+        - lambda: 'id(machine).delete_custom_drink(slot);'
+    - action: select_bean_adapt
+      variables:
+        slot: int
+      then:
+        - lambda: 'id(machine).select_bean_adapt(slot);'
     # Debug: send a raw ECAM payload (hex, without 0D/len/CRC); the answer goes to the log at INFO.
     - action: raw
       variables:
@@ -99,6 +135,217 @@ button:
     icon: mdi:coffee-outline
     on_press:
       - lambda: 'id(machine).brew(0x01, 0, 0, 0, 0, -1);'
+  # The drink chosen in "Drink", with the active profile's stored recipe.
+  - platform: template
+    name: Brew drink
+    icon: mdi:coffee-maker-outline
+    on_press:
+      - lambda: 'id(machine).brew(ecam::Ecam::drink_id(std::string(id(drink).current_option())), 0, 0, 0, 0, -1);'
+
+# Settings (PAR 50, 61-65), including the ones the app hides for this model. Bit flags are written
+# read-modify-write, so one switch never changes another setting.
+select:
+  - platform: template
+    id: drink
+    name: Drink
+    icon: mdi:coffee
+    optimistic: true
+    restore_value: true
+    options: [espresso, coffee, long, 2x espresso, doppio+, americano, cappuccino, latte macchiato, caffelatte,
+              flat white, espresso macchiato, hot milk, cappuccino doppio+, cappuccino mix, hot water, tea,
+              coffee pot, cortado, long black, cold milk, americano to go, bean adapt espresso,
+              custom 1, custom 2, custom 3, custom 4, custom 5, custom 6]
+  - platform: template
+    name: Active profile
+    icon: mdi:account
+    options: ["1", "2", "3", "4"]
+    update_interval: 5s
+    lambda: |-
+      uint8_t p = id(machine).active_profile();
+      if (!id(machine).has_status() || p == 0) return {};
+      return to_string(p);
+    set_action:
+      - lambda: 'id(machine).select_profile(atoi(std::string(x).c_str()));'
+  - platform: template
+    name: Coffee temperature
+    icon: mdi:thermometer
+    entity_category: config
+    options: [low, medium, high]
+    update_interval: 5s
+    lambda: |-
+      static const char *const o[] = {"low", "medium", "high"};
+      auto v = id(machine).param(61);
+      if (!v || *v > 2) return {};
+      return std::string(o[*v]);
+    set_action:
+      - lambda: |-
+          static const char *const o[] = {"low", "medium", "high"};
+          for (int i = 0; i < 3; i++) if (std::string(x) == o[i]) id(machine).write_param(61, i);
+  - platform: template
+    name: Auto-off
+    icon: mdi:timer-off-outline
+    entity_category: config
+    options: [15 min, 30 min, 1 h, 3 h]
+    update_interval: 5s
+    lambda: |-
+      static const char *const o[] = {"15 min", "30 min", "1 h", "3 h"};
+      auto v = id(machine).param(62);
+      if (!v || *v > 3) return {};
+      return std::string(o[*v]);
+    set_action:
+      - lambda: |-
+          static const char *const o[] = {"15 min", "30 min", "1 h", "3 h"};
+          for (int i = 0; i < 4; i++) if (std::string(x) == o[i]) id(machine).write_param(62, i);
+  # PAR 50 holds level - 1.
+  - platform: template
+    name: Water hardness
+    icon: mdi:water-opacity
+    entity_category: config
+    options: ["1", "2", "3", "4"]
+    update_interval: 5s
+    lambda: |-
+      auto v = id(machine).param(50);
+      if (!v || *v > 3) return {};
+      return to_string(*v + 1);
+    set_action:
+      - lambda: |-
+          int level = atoi(std::string(x).c_str());
+          if (level >= 1 && level <= 4) id(machine).write_param(50, level - 1);
+
+# PAR 63 flags: bit 0 autostart OFF, 1 12-hour clock, 2 key beep, 3 cup light, 4 energy saving, 7 water filter.
+switch:
+  - platform: template
+    name: Autostart
+    icon: mdi:alarm
+    entity_category: config
+    lambda: |-
+      auto off = id(machine).param_bit(63, 0x01);
+      if (!off) return {};
+      return !*off;
+    turn_on_action:
+      - lambda: 'id(machine).write_param_bits(63, 0x01, false);'
+    turn_off_action:
+      - lambda: 'id(machine).write_param_bits(63, 0x01, true);'
+  - platform: template
+    name: 12-hour clock
+    icon: mdi:clock-outline
+    entity_category: config
+    lambda: 'return id(machine).param_bit(63, 0x02);'
+    turn_on_action:
+      - lambda: 'id(machine).write_param_bits(63, 0x02, true);'
+    turn_off_action:
+      - lambda: 'id(machine).write_param_bits(63, 0x02, false);'
+  - platform: template
+    name: Key beep
+    icon: mdi:volume-high
+    entity_category: config
+    lambda: 'return id(machine).param_bit(63, 0x04);'
+    turn_on_action:
+      - lambda: 'id(machine).write_param_bits(63, 0x04, true);'
+    turn_off_action:
+      - lambda: 'id(machine).write_param_bits(63, 0x04, false);'
+  - platform: template
+    name: Cup light
+    icon: mdi:lightbulb-outline
+    entity_category: config
+    lambda: 'return id(machine).param_bit(63, 0x08);'
+    turn_on_action:
+      - lambda: 'id(machine).write_param_bits(63, 0x08, true);'
+    turn_off_action:
+      - lambda: 'id(machine).write_param_bits(63, 0x08, false);'
+  - platform: template
+    name: Energy saving
+    icon: mdi:leaf
+    entity_category: config
+    lambda: 'return id(machine).param_bit(63, 0x10);'
+    turn_on_action:
+      - lambda: 'id(machine).write_param_bits(63, 0x10, true);'
+    turn_off_action:
+      - lambda: 'id(machine).write_param_bits(63, 0x10, false);'
+  - platform: template
+    name: Water filter
+    icon: mdi:filter-outline
+    entity_category: config
+    lambda: 'return id(machine).param_bit(63, 0x80);'
+    turn_on_action:
+      - lambda: 'id(machine).write_param_bits(63, 0x80, true);'
+    turn_off_action:
+      - lambda: 'id(machine).write_param_bits(63, 0x80, false);'
+
+number:
+  - platform: template
+    name: Autostart hour
+    icon: mdi:alarm
+    entity_category: config
+    mode: box
+    min_value: 0
+    max_value: 23
+    step: 1
+    update_interval: 5s
+    lambda: |-
+      auto v = id(machine).param(64);
+      if (!v) return {};
+      return (float) *v;
+    set_action:
+      - lambda: 'id(machine).write_param(64, (uint32_t) x);'
+  - platform: template
+    name: Autostart minute
+    icon: mdi:alarm
+    entity_category: config
+    mode: box
+    min_value: 0
+    max_value: 59
+    step: 1
+    update_interval: 5s
+    lambda: |-
+      auto v = id(machine).param(65);
+      if (!v) return {};
+      return (float) *v;
+    set_action:
+      - lambda: 'id(machine).write_param(65, (uint32_t) x);'
+
+# Profile names (10 characters), renamed on the machine when changed here.
+text:
+  - platform: template
+    name: Profile 1 name
+    icon: mdi:account-edit
+    entity_category: config
+    mode: text
+    max_length: 10
+    update_interval: 10s
+    lambda: 'return id(machine).profile_name(1);'
+    set_action:
+      - lambda: 'id(machine).rename_profile(1, std::string(x));'
+  - platform: template
+    name: Profile 2 name
+    icon: mdi:account-edit
+    entity_category: config
+    mode: text
+    max_length: 10
+    update_interval: 10s
+    lambda: 'return id(machine).profile_name(2);'
+    set_action:
+      - lambda: 'id(machine).rename_profile(2, std::string(x));'
+  - platform: template
+    name: Profile 3 name
+    icon: mdi:account-edit
+    entity_category: config
+    mode: text
+    max_length: 10
+    update_interval: 10s
+    lambda: 'return id(machine).profile_name(3);'
+    set_action:
+      - lambda: 'id(machine).rename_profile(3, std::string(x));'
+  - platform: template
+    name: Profile 4 name
+    icon: mdi:account-edit
+    entity_category: config
+    mode: text
+    max_length: 10
+    update_interval: 10s
+    lambda: 'return id(machine).profile_name(4);'
+    set_action:
+      - lambda: 'id(machine).rename_profile(4, std::string(x));'
 
 text_sensor:
   - platform: template
@@ -132,6 +379,76 @@ text_sensor:
       if (id(machine).brew_answers() == seen) return {};
       seen = id(machine).brew_answers();
       return id(machine).last_brew();
+  - platform: template
+    name: Favourites
+    icon: mdi:star
+    update_interval: 10s
+    lambda: 'return id(machine).favorites_text();'
+  - platform: template
+    name: Custom drinks
+    icon: mdi:coffee-to-go-outline
+    update_interval: 10s
+    lambda: 'return id(machine).custom_drinks_text();'
+  # Answer to the read_recipe / save_recipe actions.
+  - platform: template
+    name: Recipe
+    icon: mdi:clipboard-text
+    entity_category: diagnostic
+    update_interval: 1s
+    lambda: |-
+      if (id(machine).recipe_text().empty()) return {};
+      return id(machine).recipe_text();
+  # Device info, read when the machine comes online: PAR 205-209 serial number (4 ASCII bytes each),
+  # 200-203 production date and 199 EEPROM version (shown raw), 210 the Bluetooth PIN.
+  - platform: template
+    name: Serial number
+    icon: mdi:identifier
+    entity_category: diagnostic
+    update_interval: 30s
+    lambda: |-
+      std::string out;
+      for (int pid = 205; pid <= 209; pid++) {
+        auto v = id(machine).param(pid);
+        if (!v) return {};
+        for (int shift = 24; shift >= 0; shift -= 8) {
+          char c = (*v >> shift) & 0xFF;
+          if (c > 0x20 && c < 0x7F) out += c;
+        }
+      }
+      return out;
+  - platform: template
+    name: Production date
+    icon: mdi:factory
+    entity_category: diagnostic
+    update_interval: 30s
+    lambda: |-
+      std::string out;
+      for (int pid = 200; pid <= 203; pid++) {
+        auto v = id(machine).param(pid);
+        if (!v) return {};
+        if (!out.empty()) out += " ";
+        out += to_string(*v);
+      }
+      return out;
+  - platform: template
+    name: EEPROM version
+    icon: mdi:chip
+    entity_category: diagnostic
+    update_interval: 30s
+    lambda: |-
+      auto v = id(machine).param(199);
+      if (!v) return {};
+      return to_string(*v);
+  - platform: template
+    name: PIN
+    icon: mdi:form-textbox-password
+    entity_category: diagnostic
+    disabled_by_default: true
+    update_interval: 30s
+    lambda: |-
+      auto v = id(machine).param(210);
+      if (!v) return {};
+      return to_string(*v);
   # Raw door/container switches (monitor bytes 1-2). "Insert X" on the display comes from here,
   # not from the alarm word.
   - platform: template
@@ -169,18 +486,40 @@ sensor:
     state_class: total_increasing
     accuracy_decimals: 2
     update_interval: never
-  - platform: template
-    id: coffees
-    name: Coffees
-    state_class: total_increasing
-    accuracy_decimals: 0
-    update_interval: never
-  - platform: template
-    id: teas
-    name: Teas
-    state_class: total_increasing
-    accuracy_decimals: 0
-    update_interval: never
+  # Statistics counters (A2 0f, read every minute): 3000-3003 per category, 3003 + drink id per drink.
+  # A drink the machine has never made reads 0.
+  - {platform: ecam, id: coffees, name: Coffees, counter: 3000}
+  - {platform: ecam, name: Milk coffees, counter: 3001}
+  - {platform: ecam, name: Water drinks, counter: 3002}
+  - {platform: ecam, name: To-go drinks, counter: 3003}
+  - {platform: ecam, name: Espresso count, counter: 3004}
+  - {platform: ecam, name: Coffee count, counter: 3005}
+  - {platform: ecam, name: Long count, counter: 3006}
+  - {platform: ecam, name: 2x espresso count, counter: 3007}
+  - {platform: ecam, name: Doppio+ count, counter: 3008}
+  - {platform: ecam, name: Americano count, counter: 3009}
+  - {platform: ecam, name: Cappuccino count, counter: 3010}
+  - {platform: ecam, name: Latte macchiato count, counter: 3011}
+  - {platform: ecam, name: Caffelatte count, counter: 3012}
+  - {platform: ecam, name: Flat white count, counter: 3013}
+  - {platform: ecam, name: Espresso macchiato count, counter: 3014}
+  - {platform: ecam, name: Hot milk count, counter: 3015}
+  - {platform: ecam, name: Cappuccino doppio+ count, counter: 3016}
+  - {platform: ecam, name: Cappuccino mix count, counter: 3018}
+  - {platform: ecam, name: Hot water count, counter: 3019}
+  - {platform: ecam, id: teas, name: Teas, counter: 3025}
+  - {platform: ecam, name: Coffee pot count, counter: 3026}
+  - {platform: ecam, name: Cortado count, counter: 3027}
+  - {platform: ecam, name: Long black count, counter: 3030}
+  - {platform: ecam, name: Cold milk count, counter: 3058}
+  - {platform: ecam, name: Americano to go count, counter: 3083}
+  - {platform: ecam, name: Bean Adapt espresso count, counter: 3203}
+  - {platform: ecam, name: Custom 1 count, counter: 3233}
+  - {platform: ecam, name: Custom 2 count, counter: 3234}
+  - {platform: ecam, name: Custom 3 count, counter: 3235}
+  - {platform: ecam, name: Custom 4 count, counter: 3236}
+  - {platform: ecam, name: Custom 5 count, counter: 3237}
+  - {platform: ecam, name: Custom 6 count, counter: 3238}
   - platform: template
     id: milk_cleans
     name: Milk cleans
@@ -203,9 +542,10 @@ binary_sensor:
             b->invalidate_state();
           for (auto *b : {id(tank_out), id(grounds_out)})
             b->invalidate_state();
-          for (auto *s : {id(progress), id(water_total), id(coffees), id(teas), id(milk_cleans)})
+          for (auto *s : {id(progress), id(water_total), id(milk_cleans)})
             s->publish_state(NAN);
     on_press:
+      - lambda: 'id(machine).refresh(true);'
       - script.execute: read_counters
   - platform: template
     id: ready
@@ -275,8 +615,6 @@ script:
       - lambda: |-
           // PAR 106: flowmeter count / 10; 25 pulses per ml (weighed 105 g for 2620 pulses).
           id(machine).read_param(106, [](uint32_t v) { id(water_total).publish_state(v * 10 / 25.0f / 1000.0f); });
-          id(machine).read_param(3000, [](uint32_t v) { id(coffees).publish_state(v); });
-          id(machine).read_param(3025, [](uint32_t v) { id(teas).publish_state(v); });
           id(machine).read_param(115, [](uint32_t v) { id(milk_cleans).publish_state(v); });
 
 interval:
@@ -286,4 +624,5 @@ interval:
           condition:
             lambda: 'return id(machine).has_status();'
           then:
+            - lambda: 'id(machine).refresh(false);'
             - script.execute: read_counters
