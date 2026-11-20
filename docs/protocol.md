@@ -44,6 +44,9 @@ answer   D0 LEN payload CRC16
 | `B0 F0 <n>` | drink limits (min/default/max per tag) | |
 | `B9 F0 <slot>` / `BB F0 <slot> <name 40 B> <grind> <temp> <aroma> <blend> <roast>` | select / write Bean Adapt slot | |
 | `ED F0 <icon>` | Wi-Fi icon on the display, see below | |
+| `E2 F0 <hour> <minute>` | set the machine clock (app: `setHour`) | `E2 F0 00` ok |
+| `B0 F0 <bev>` | drink limits, see below | |
+| `BA F0 <n>` / `A3 F0` / `E8 F0 00 ED 7C` | app: Bean Adapt slot read / a per-profile u16 list / "remote control" check (byte 9 == 3); not decoded | |
 
 Answer layouts (confirmed on an ECAM450.76.T through the firmware; the profile and custom-drink lists
 make answers up to ~140 bytes, so a reader must not cap frames at 64):
@@ -56,6 +59,17 @@ make answers up to ~140 bytes, so a reader must not cap frames at 64):
 | `AC F0 <profile>` | bytes 5..15: 11 drink ids, newest first, `00` = empty |
 | `A6 F0 <profile> <bev>` | from byte 6: the recipe TLVs |
 | `A2 0F <start> 0A` | from byte 4: up to 10 × (`id u16`, `u32`); page on with `start = last id + 1` |
+
+`B0 F0 <bev>` answers from byte 5 with `(tag, min, default, max)` per recipe value; values are u16 for the
+u16 tags (`01`, `09`, `0F`), else u8 (the app's `getDefaultMinMaxQty`).
+
+Drink ids of the ECAM450.76.T from the app's `assets/MachinesModels.json` (decimal there): `01`–`0D`, `0F`
+cappuccino reverse, `10` hot water, `16` tea, `17` coffee pot, `18` cortado, `1B` brew over ice, `32`–`38`
+iced americano / cappuccino / latte macchiato / cappuccino mix / flat white / cold milk / caffelatte,
+`50`–`56` mug americano / cappuccino / latte macchiato / caffelatte / cappuccino mix / flat white / hot milk
+(the "to-go" category PAR 3003), `64`–`6B` mug brew over ice and mug iced drinks, `C8` Bean Adapt espresso,
+`E6`–`EB` custom. The same file marks autostart, clock, cup light and cup warmer as off for one SKU of
+the model and on for another.
 
 Deleting a profile is a rename to an all-zero name. Deleting a custom drink: `83 F0 <E6..EB> 00 ... 04`
 (ACK `00 01`).
@@ -93,7 +107,9 @@ Boiler temperature and flow are **not** exposed: the service menu shows them, bu
 ```
 
 - `op`: `00` save the recipe without brewing, `02` stop, `03` start.
-- `tail`: `05` save, `06` prepare (start / stop), `04` delete.
+- `tail`: `(profile << 2) | operation` as the app builds it: operation 0 delete, 1 save, 2 prepare,
+  3 prepare and save (also 5–7 for milk "inversion" variants). So `04` / `05` / `06` are delete / save /
+  prepare **for profile 1**; profile 2 prepares with `0A`.
 - TLVs are `tag value`; tags `01`, `09`, `0F` carry a u16 big-endian, the rest a u8.
 
 | Tag | Meaning |

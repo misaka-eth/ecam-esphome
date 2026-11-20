@@ -91,12 +91,29 @@ api:
         slot: int
       then:
         - lambda: 'id(machine).select_bean_adapt(slot);'
+    # Logs every statistics counter (id = value) at INFO, for finding counters without an entity.
+    - action: dump_counters
+      then:
+        - lambda: 'id(machine).dump_counters();'
     # Debug: send a raw ECAM payload (hex, without 0D/len/CRC); the answer goes to the log at INFO.
     - action: raw
       variables:
         payload: string
       then:
         - lambda: 'id(machine).raw(payload);'
+
+# The machine's clock (autostart, display) follows Home Assistant's time: on every sync, when the
+# machine comes online, and hourly.
+time:
+  - platform: homeassistant
+    id: ha_time
+    on_time_sync:
+      - script.execute: sync_clock
+    on_time:
+      - seconds: 0
+        minutes: 0
+        then:
+          - script.execute: sync_clock
 
 uart:
   id: mainboard
@@ -164,10 +181,55 @@ select:
     # Choosing a drink loads its stored recipe (active profile) into the Recipe entities.
     on_value:
       - lambda: 'id(machine).read_recipe(ecam::Ecam::drink_id(x), 0);'
-    options: [espresso, coffee, long, 2x espresso, doppio+, americano, cappuccino, latte macchiato, caffelatte,
-              flat white, espresso macchiato, hot milk, cappuccino doppio+, cappuccino mix, hot water, tea,
-              coffee pot, cortado, long black, cold milk, americano to go, bean adapt espresso,
-              custom 1, custom 2, custom 3, custom 4, custom 5, custom 6]
+    options:
+      - espresso
+      - coffee
+      - long coffee
+      - 2x espresso
+      - doppio+
+      - americano
+      - cappuccino
+      - latte macchiato
+      - caffelatte
+      - flat white
+      - espresso macchiato
+      - hot milk
+      - cappuccino doppio+
+      - cappuccino reverse
+      - hot water
+      - tea
+      - coffee pot
+      - cortado
+      - brew over ice
+      - iced americano
+      - iced cappuccino
+      - iced latte macchiato
+      - iced cappuccino mix
+      - iced flat white
+      - iced cold milk
+      - iced caffelatte
+      - mug americano
+      - mug cappuccino
+      - mug latte macchiato
+      - mug caffelatte
+      - mug cappuccino mix
+      - mug flat white
+      - mug hot milk
+      - mug brew over ice
+      - mug iced americano
+      - mug iced cappuccino
+      - mug iced latte macchiato
+      - mug iced caffelatte
+      - mug iced cappuccino mix
+      - mug iced flat white
+      - mug iced cold milk
+      - bean adapt espresso
+      - custom 1
+      - custom 2
+      - custom 3
+      - custom 4
+      - custom 5
+      - custom 6
   - platform: template
     name: Active profile
     icon: mdi:account
@@ -487,6 +549,15 @@ text_sensor:
     lambda: |-
       if (id(machine).recipe_text().empty()) return {};
       return id(machine).recipe_text();
+  # The machine's min-max per value of the drink in "Drink" (b0); edits are clamped to it.
+  - platform: template
+    name: Recipe limits
+    icon: mdi:arrow-expand-horizontal
+    update_interval: 1s
+    lambda: |-
+      auto t = id(machine).recipe_limits_text();
+      if (t.empty()) return {};
+      return t;
   # Device info, read when the machine comes online: PAR 205-209 serial number (4 ASCII bytes each),
   # 200-203 production date and 199 EEPROM version (shown raw), 210 the Bluetooth PIN.
   - platform: template
@@ -575,7 +646,8 @@ sensor:
     state_class: total_increasing
     accuracy_decimals: 2
     update_interval: never
-  # Statistics counters (A2 0f, read every minute): 3000-3003 per category, 3003 + drink id per drink.
+  # Statistics counters (A2 0f, read every minute): 3000-3003 per category, 3003 + drink id per drink
+  # (drinks of the ECAM450.76.T as listed in the app).
   # A drink the machine has never made reads 0.
   - {platform: ecam, id: coffees, name: Coffees, counter: 3000}
   - {platform: ecam, name: Milk coffees, counter: 3001}
@@ -594,15 +666,35 @@ sensor:
   - {platform: ecam, name: Espresso macchiato count, counter: 3014}
   - {platform: ecam, name: Hot milk count, counter: 3015}
   - {platform: ecam, name: Cappuccino doppio+ count, counter: 3016}
-  - {platform: ecam, name: Cappuccino mix count, counter: 3018}
+  - {platform: ecam, name: Cappuccino reverse count, counter: 3018}
   - {platform: ecam, name: Hot water count, counter: 3019}
   - {platform: ecam, id: teas, name: Teas, counter: 3025}
   - {platform: ecam, name: Coffee pot count, counter: 3026}
   - {platform: ecam, name: Cortado count, counter: 3027}
-  - {platform: ecam, name: Long black count, counter: 3030}
-  - {platform: ecam, name: Cold milk count, counter: 3058}
-  - {platform: ecam, name: Americano to go count, counter: 3083}
-  - {platform: ecam, name: Bean Adapt espresso count, counter: 3203}
+  - {platform: ecam, name: Brew over ice count, counter: 3030}
+  - {platform: ecam, name: Iced americano count, counter: 3053}
+  - {platform: ecam, name: Iced cappuccino count, counter: 3054}
+  - {platform: ecam, name: Iced latte macchiato count, counter: 3055}
+  - {platform: ecam, name: Iced cappuccino mix count, counter: 3056}
+  - {platform: ecam, name: Iced flat white count, counter: 3057}
+  - {platform: ecam, name: Iced cold milk count, counter: 3058}
+  - {platform: ecam, name: Iced caffelatte count, counter: 3059}
+  - {platform: ecam, name: Mug americano count, counter: 3083}
+  - {platform: ecam, name: Mug cappuccino count, counter: 3084}
+  - {platform: ecam, name: Mug latte macchiato count, counter: 3085}
+  - {platform: ecam, name: Mug caffelatte count, counter: 3086}
+  - {platform: ecam, name: Mug cappuccino mix count, counter: 3087}
+  - {platform: ecam, name: Mug flat white count, counter: 3088}
+  - {platform: ecam, name: Mug hot milk count, counter: 3089}
+  - {platform: ecam, name: Mug brew over ice count, counter: 3103}
+  - {platform: ecam, name: Mug iced americano count, counter: 3104}
+  - {platform: ecam, name: Mug iced cappuccino count, counter: 3105}
+  - {platform: ecam, name: Mug iced latte macchiato count, counter: 3106}
+  - {platform: ecam, name: Mug iced caffelatte count, counter: 3107}
+  - {platform: ecam, name: Mug iced cappuccino mix count, counter: 3108}
+  - {platform: ecam, name: Mug iced flat white count, counter: 3109}
+  - {platform: ecam, name: Mug iced cold milk count, counter: 3110}
+  - {platform: ecam, name: Bean adapt espresso count, counter: 3203}
   - {platform: ecam, name: Custom 1 count, counter: 3233}
   - {platform: ecam, name: Custom 2 count, counter: 3234}
   - {platform: ecam, name: Custom 3 count, counter: 3235}
@@ -635,6 +727,7 @@ binary_sensor:
             s->publish_state(NAN);
     on_press:
       - lambda: 'id(machine).refresh(true);'
+      - script.execute: sync_clock
       - delay: 2s
       - lambda: 'id(machine).read_recipe(ecam::Ecam::drink_id(std::string(id(drink).current_option())), 0);'
       - script.execute: read_counters
@@ -701,6 +794,11 @@ binary_sensor:
       return (id(machine).status().alarms & (1 << 11)) != 0;
 
 script:
+  - id: sync_clock
+    then:
+      - lambda: |-
+          auto now = id(ha_time).now();
+          if (now.is_valid() && id(machine).has_status()) id(machine).set_clock(now.hour, now.minute);
   - id: read_counters
     then:
       - lambda: |-

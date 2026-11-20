@@ -231,7 +231,7 @@ bool Ecam::brew(int drink, int coffee_ml, int water_ml, float milk_s, int streng
     p.push_back(0x1B); p.push_back(temp == 3 ? 0x01 : 0x04);
     p.push_back(0x0D); p.push_back(uint8_t(temp));
   }
-  p.push_back(0x06);
+  p.push_back(this->tail_(2));
   this->last_drink_ = uint8_t(drink);
   // Retrying a brew could start it twice: one attempt, generous timeout.
   this->enqueue_(std::move(p), 1, 1500, [this, drink](const std::vector<uint8_t> *f) {
@@ -257,7 +257,7 @@ void Ecam::stop() {
     ESP_LOGW(TAG, "stop: no drink started from here");
     return;
   }
-  this->enqueue_({0x83, 0xF0, this->last_drink_, 0x02, 0x06}, 3, 800, [](const std::vector<uint8_t> *f) {
+  this->enqueue_({0x83, 0xF0, this->last_drink_, 0x02, this->tail_(2)}, 3, 800, [](const std::vector<uint8_t> *f) {
     ESP_LOGI(TAG, "stop: %s", f ? "ok" : "no answer");
   }, true);
 }
@@ -589,7 +589,7 @@ void Ecam::delete_custom_drink(uint8_t slot) {
     for (auto &tv : parse_tlv(f->data() + 6, f->size() - 8))
       if (tv.first != 0x0B && tv.first != 0x19 && tv.first != 0x27)
         put_tlv(p, tv.first, tv.second);
-    p.insert(p.end(), {0x0B, 0xFF, 0x27, 0x00, 0x04});
+    p.insert(p.end(), {0x0B, 0xFF, 0x27, 0x00, this->tail_(0)});
     this->enqueue_(std::move(p), 1, 1500, [this, bev](const std::vector<uint8_t> *f) {
       bool ok = f && f->size() >= 6 && (*f)[4] == 0x00 && (*f)[5] == 0x01;
       ESP_LOGI(TAG, "delete custom drink %02X: %s", bev, f ? (ok ? "ok" : "rejected") : "no answer");
@@ -645,6 +645,72 @@ void Ecam::read_recipe(int drink, int profile) {
     ESP_LOGI(TAG, "recipe %s", out.c_str());
     this->recipe_text_ = out;
   });
+  this->read_limits_(uint8_t(drink));
+}
+
+// b0 f0 <drink> -> from byte 5: (tag, min, default, max), u16 values for the u16 tags (as the app decodes it).
+void Ecam::read_limits_(uint8_t drink) {
+  this->recipe_limits_.clear();
+  this->enqueue_({0xB0, 0xF0, drink}, 2, 500, [this, drink](const std::vector<uint8_t> *f) {
+    if (!f || f->size() < 8 || (*f)[4] != drink)
+      return;
+    std::map<uint8_t, Limit> limits;
+    size_t i = 5, end = f->size() - 2;
+    while (i < end) {
+      uint8_t t = (*f)[i];
+      size_t w = tag16(t) ? 2 : 1;
+      if (i + 1 + 3 * w > end) {
+        ESP_LOGW(TAG, "limits %02X: odd length, ignored: %s", drink, format_hex(*f).c_str());
+        return;
+      }
+      auto rd = [&](size_t k) -> uint16_t {
+        return w == 2 ? uint16_t(((*f)[k] << 8) | (*f)[k + 1]) : (*f)[k];
+      };
+      limits[t] = {rd(i + 1), rd(i + 1 + w), rd(i + 1 + 2 * w)};
+      i += 1 + 3 * w;
+    }
+    this->recipe_limits_ = std::move(limits);
+    ESP_LOGD(TAG, "limits %02X: %s", drink, this->recipe_limits_text().c_str());
+  });
+}
+
+void Ecam::set_recipe_value(uint8_t tag, uint16_t value) {
+  auto l = this->recipe_limits_.find(tag);
+  if (l != this->recipe_limits_.end()) {
+    if (value < l->second.min)
+      value = l->second.min;
+    if (value > l->second.max)
+      value = l->second.max;
+  }
+  this->recipe_edits_[tag] = value;
+}
+
+std::string Ecam::recipe_limits_text() const {
+  std::string out;
+  for (auto &tv : this->recipe_tlv_) {
+    auto l = this->recipe_limits_.find(tv.first);
+    const char *n = tag_name(tv.first);
+    if (l == this->recipe_limits_.end() || !n || l->second.min == l->second.max)
+      continue;
+    if (!out.empty())
+      out += ", ";
+    out += std::string(n) + " " + to_string(l->second.min) + "-" + to_string(l->second.max);
+  }
+  return out;
+}
+
+void Ecam::set_clock(uint8_t hour, uint8_t minute) {
+  if (hour > 23 || minute > 59)
+    return;
+  this->enqueue_({0xE2, 0xF0, hour, minute}, 2, 800, [hour, minute](const std::vector<uint8_t> *f) {
+    ESP_LOGI(TAG, "clock %02u:%02u: %s", hour, minute, f ? ((*f)[4] == 0 ? "ok" : "rejected") : "no answer");
+  });
+}
+
+void Ecam::dump_counters() const {
+  ESP_LOGI(TAG, "%u counters:", (unsigned) this->stats_.size());
+  for (auto &kv : this->stats_)
+    ESP_LOGI(TAG, "  %u = %u", kv.first, (unsigned) kv.second);
 }
 
 void Ecam::save_recipe(int drink, int coffee_ml, int water_ml, float milk_s, int strength, int temp) {
@@ -710,7 +776,7 @@ void Ecam::save_recipe_(uint8_t drink, std::map<uint8_t, uint16_t> changes) {
       auto c = changes.find(tv.first);
       put_tlv(p, tv.first, c != changes.end() ? c->second : tv.second);
     }
-    p.insert(p.end(), {0x27, 0x00, 0x05});
+    p.insert(p.end(), {0x27, 0x00, this->tail_(1)});
     std::string tx = format_hex(p);
     this->enqueue_(std::move(p), 1, 1500, [this, drink, tx](const std::vector<uint8_t> *f) {
       ESP_LOGI(TAG, "save recipe %s -> %s", tx.c_str(), f ? format_hex(*f).c_str() : "no answer");
@@ -725,23 +791,25 @@ void Ecam::select_bean_adapt(uint8_t slot) {
   }, true);
 }
 
-// ---- drink names (confirmed on the Eletta Explore: 01 03 06 0a 0c 10 16 37 50 c8 e6-eb; the rest are
-// the usual ECAM ids)
+// ---- drink names: ids and names as in the app's model data for the ECAM450.76.T (MachinesModels.json)
 
 static const struct {
   uint8_t id;
   const char *name;
 } DRINKS[] = {
-    {0x01, "espresso"},        {0x02, "coffee"},           {0x03, "long"},
-    {0x04, "2x espresso"},     {0x05, "doppio+"},          {0x06, "americano"},
-    {0x07, "cappuccino"},      {0x08, "latte macchiato"},  {0x09, "caffelatte"},
-    {0x0A, "flat white"},      {0x0B, "espresso macchiato"}, {0x0C, "hot milk"},
-    {0x0D, "cappuccino doppio+"}, {0x0F, "cappuccino mix"}, {0x10, "hot water"},
-    {0x16, "tea"},             {0x17, "coffee pot"},       {0x18, "cortado"},
-    {0x1B, "long black"},      {0x37, "cold milk"},        {0x50, "americano to go"},
-    {0xC8, "bean adapt espresso"}, {0xE6, "custom 1"},     {0xE7, "custom 2"},
-    {0xE8, "custom 3"},        {0xE9, "custom 4"},         {0xEA, "custom 5"},
-    {0xEB, "custom 6"},
+    {0x01, "espresso"}, {0x02, "coffee"}, {0x03, "long coffee"}, {0x04, "2x espresso"}, {0x05, "doppio+"},
+    {0x06, "americano"}, {0x07, "cappuccino"}, {0x08, "latte macchiato"}, {0x09, "caffelatte"},
+    {0x0A, "flat white"}, {0x0B, "espresso macchiato"}, {0x0C, "hot milk"}, {0x0D, "cappuccino doppio+"},
+    {0x0F, "cappuccino reverse"}, {0x10, "hot water"}, {0x16, "tea"}, {0x17, "coffee pot"}, {0x18, "cortado"},
+    {0x1B, "brew over ice"}, {0x32, "iced americano"}, {0x33, "iced cappuccino"},
+    {0x34, "iced latte macchiato"}, {0x35, "iced cappuccino mix"}, {0x36, "iced flat white"},
+    {0x37, "iced cold milk"}, {0x38, "iced caffelatte"}, {0x50, "mug americano"}, {0x51, "mug cappuccino"},
+    {0x52, "mug latte macchiato"}, {0x53, "mug caffelatte"}, {0x54, "mug cappuccino mix"},
+    {0x55, "mug flat white"}, {0x56, "mug hot milk"}, {0x64, "mug brew over ice"}, {0x65, "mug iced americano"},
+    {0x66, "mug iced cappuccino"}, {0x67, "mug iced latte macchiato"}, {0x68, "mug iced caffelatte"},
+    {0x69, "mug iced cappuccino mix"}, {0x6A, "mug iced flat white"}, {0x6B, "mug iced cold milk"},
+    {0xC8, "bean adapt espresso"}, {0xE6, "custom 1"}, {0xE7, "custom 2"}, {0xE8, "custom 3"},
+    {0xE9, "custom 4"}, {0xEA, "custom 5"}, {0xEB, "custom 6"},
 };
 
 std::string Ecam::drink_name(uint8_t id) {

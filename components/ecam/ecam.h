@@ -80,8 +80,16 @@ class Ecam : public Component, public uart::UARTDevice {
   // Recipe editor: the last recipe read (read_recipe) by TLV tag, with edits staged until save_recipe_edits().
   // A tag the drink does not have reads empty, so the entity shows unknown.
   optional<uint16_t> recipe_value(uint8_t tag) const;
-  void set_recipe_value(uint8_t tag, uint16_t value) { this->recipe_edits_[tag] = value; }
+  // Edits are clamped to the drink's limits (B0) when the machine reported them.
+  void set_recipe_value(uint8_t tag, uint16_t value);
   void save_recipe_edits();
+  // "coffee_ml 20-180, strength 1-5, ..." for the recipe shown; empty until the limits arrived.
+  std::string recipe_limits_text() const;
+
+  // Machine clock (E2 f0 hh mm, as the app sends it).
+  void set_clock(uint8_t hour, uint8_t minute);
+  // Logs every statistics counter (id = value) at INFO.
+  void dump_counters() const;
 
   void select_bean_adapt(uint8_t slot);
 
@@ -166,6 +174,11 @@ class Ecam : public Component, public uart::UARTDevice {
   uint8_t recipe_profile_{0};
   std::vector<std::pair<uint8_t, uint16_t>> recipe_tlv_;
   std::map<uint8_t, uint16_t> recipe_edits_;
+  struct Limit { uint16_t min, def, max; };
+  std::map<uint8_t, Limit> recipe_limits_;
+  void read_limits_(uint8_t drink);
+  // Last byte of 83 f0: (profile << 2) | operation (0 delete, 1 save, 2 prepare).
+  uint8_t tail_(uint8_t op) const { return uint8_t(((this->active_profile_ ? this->active_profile_ : 1) << 2) | op); }
 #ifdef USE_SENSOR
   std::vector<std::pair<uint16_t, sensor::Sensor *>> counters_;
 #endif
