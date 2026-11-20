@@ -15,6 +15,20 @@ namespace ecam {
 
 static const char *const TAG = "ecam";
 
+// Newer ESPHome removed the std::string-returning format_hex(); local replacement.
+static std::string format_hex(const uint8_t *data, size_t len) {
+  static const char *const DIGITS = "0123456789abcdef";
+  std::string s;
+  s.reserve(len * 2);
+  for (size_t i = 0; i < len; i++) {
+    s += DIGITS[data[i] >> 4];
+    s += DIGITS[data[i] & 0x0F];
+  }
+  return s;
+}
+static std::string format_hex(const std::vector<uint8_t> &v) { return format_hex(v.data(), v.size()); }
+static std::string format_hex(uint8_t b) { return format_hex(&b, 1); }
+
 // Request: 0d <len> <payload> <crc16>; answer: d0 <len> <payload> <crc16>; len = total - 1.
 static const uint8_t REQ = 0x0D;
 static const uint8_t ANS = 0xD0;

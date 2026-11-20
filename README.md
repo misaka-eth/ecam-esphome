@@ -1,7 +1,7 @@
 # ecam-esphome
 
-ESPHome firmware for DeLonghi ECAM coffee machines (tested on an Eletta Explore) that replaces the
-stock Wi-Fi module with an M5Stack Atom Lite on the mainboard UART.
+ESPHome firmware for DeLonghi ECAM coffee machines (tested on Eletta Explore ECAM450.65.G and
+ECAM450.76.T) that replaces the stock Wi-Fi module with an M5Stack Atom Lite on the mainboard UART.
 
 ## Wiring (mainboard J8, 2.0 mm header)
 
@@ -14,6 +14,11 @@ Pin numbers as on the stock module's J1A connector; details and photos in
 | 8 (GND) | GND |
 | 5 (machine TX) | G19 (RX) |
 | 6 (machine RX) | G22 (TX) |
+
+Other ESP32 boards work too: override `esp32:` and the `uart:` pins in the device file and use any free
+GPIO pair (no strapping, USB or console pins). Tested with an ESP32-C6
+(`board: esp32-c6-devkitc-1`, `variant: esp32c6`). A board powered over its own USB supply needs only
+GND, TX and RX; leave J8-4 unconnected then.
 
 ## Use
 
