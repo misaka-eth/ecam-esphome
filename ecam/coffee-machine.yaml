@@ -114,6 +114,7 @@ api:
             data: !lambda |-
               root["done"] = id(machine).scan_done();
               root["answered"] = id(machine).scan_answered();
+              root["next"] = id(machine).scan_next();
               JsonObject values = root["values"].to<JsonObject>();
               for (auto &kv : id(machine).scan_results()) values[to_string(kv.first)] = kv.second;
     # The answer to the last raw action: {"raw": "<tx> -> <rx>"}.

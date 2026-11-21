@@ -98,6 +98,7 @@ class Ecam : public Component, public uart::UARTDevice {
   const std::map<uint16_t, uint32_t> &scan_results() const { return this->scan_; }
   bool scan_done() const { return this->scan_left_ == 0; }
   uint16_t scan_answered() const { return this->scan_answered_; }
+  uint16_t scan_next() const { return this->scan_next_; }
   // "<tx> -> <rx>" of the last raw request.
   const std::string &last_raw() const { return this->last_raw_; }
 
@@ -191,6 +192,7 @@ class Ecam : public Component, public uart::UARTDevice {
   uint16_t scan_next_{0};
   uint16_t scan_left_{0};
   uint16_t scan_answered_{0};
+  uint32_t scan_at_{0};
   void scan_step_();
   std::string last_raw_;
   struct Limit { uint16_t min, def, max; };

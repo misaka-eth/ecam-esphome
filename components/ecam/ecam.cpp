@@ -37,6 +37,7 @@ static const uint8_t ANS = 0xD0;
 static const uint32_t POLL_MS = 1000;
 static const uint32_t WIFI_MS = 5000;
 static const uint32_t STALE_MS = 5000;
+static const uint32_t SCAN_MS = 100;
 
 uint16_t Ecam::crc_(const uint8_t *data, size_t len) {
   uint16_t c = 0x1D0F;
@@ -154,6 +155,8 @@ void Ecam::loop() {
     }
     if (now - this->status_at_ >= POLL_MS)
       this->enqueue_({0x75, 0x0F}, 1, 300);
+    else if (this->scan_left_ && now - this->scan_at_ >= SCAN_MS)
+      this->scan_step_();  // one read per gap between polls, so the monitor never goes stale
   }
   if (this->status_valid_ && now - this->status_at_ > STALE_MS) {
     this->status_valid_ = false;
@@ -734,13 +737,11 @@ void Ecam::scan_params(uint16_t start, uint16_t count) {
   this->scan_next_ = start;
   this->scan_left_ = count;
   ESP_LOGI(TAG, "scan PAR %u..%u", start, start + count - 1);
-  this->scan_step_();
 }
 
-// One read at a time, so the monitor poll keeps running between them.
+// Called from loop() only when nothing else is queued.
 void Ecam::scan_step_() {
-  if (this->scan_left_ == 0)
-    return;
+  this->scan_at_ = millis();
   uint16_t pid = this->scan_next_++;
   this->scan_left_--;
   this->enqueue_({0x95, 0x0F, uint8_t(pid >> 8), uint8_t(pid & 0xFF), 0x01}, 1, 300,
@@ -754,7 +755,6 @@ void Ecam::scan_step_() {
                    if (this->scan_left_ == 0)
                      ESP_LOGI(TAG, "scan done: %u answered, %u non-zero", this->scan_answered_,
                               (unsigned) this->scan_.size());
-                   this->scan_step_();
                  });
 }
 
