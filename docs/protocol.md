@@ -172,7 +172,7 @@ The service menu shows the same ids as `PAR <decimal>`.
 | 64–65 / 0x40–0x41 | autostart hour / minute |
 | 106 | total water: display litres; raw value ×10 / 25 = ml |
 | 400, 402 | flow-meter pulses, about 25 per ml (2620 pulses weighed as 105 g) |
-| 115 | milk cleans |
+| 115 | milk cleans (**confirmed**: +1 per milk clean; 116 unchanged) |
 | 199 | mainboard EEPROM version |
 | 200–203 | production date |
 | 205–209 | serial number (ASCII) |
@@ -187,19 +187,20 @@ actions; misaka's machine reads 0 for most of them):
 
 | PAR | Value seen | Meaning |
 |-----|-----------|---------|
-| 63 bit 7 | 0 → 1 | water filter set in the menu (**confirmed**) |
+| 63 bit 7 | 0 → 1 | water filter set in the menu (**confirmed**); clearing it also resets PAR 109 to 0 |
 | 108 | 9 → 10 | filters installed (**confirmed**: +1 when a filter is set in the menu) |
 | 109 | 0 → 249 | water through the filter since it was set, unit as PAR 106 (**confirmed**: 0 while no filter was set, then grew exactly like 106) |
 | 105 | 5 | descales (presumed) |
 | 100 | 87134 | water since the last descale (presumed): grows by the sum of the flow meters PAR 400 + 401 (25 pulses/ml); unchanged by a filter change |
-| 400, 401 | +3470/+20 espresso, +1729/+14 rinse | two flow meters; 402/403 grow alike (lifetime totals) |
+| 400, 401 | +3470/+20 espresso, +1729/+14 rinse, +4660/+3800 cappuccino + milk clean | two flow meters, 401 mainly the milk/steam circuit; 402/403 grow alike (lifetime totals) |
 | 101 | +42 per espresso, 0 per rinse | unknown, per-brew amount (grinding?) |
-| 57, 505 | +1 per drink, 0 per rinse | unknown per-drink counters |
+| 505 | +1 per drink, 0 per rinse | unknown per-drink counter |
+| 57 | 278 → 279 → 276 | unknown, not a counter |
 | 51–56, 502, 503 | values shift between brews | looks like a buffer of the last brews |
 
 Only PAR 0, 32–35, 40–58, 61–63, 71, 100–116, 194, 199–215, 400–407 and 500–505 are non-zero below 3000;
 every id answers. Statistics (`A2`) also list blocks 23000–23009 (23004/23007/23008 +127 per espresso,
-0 per rinse) and 43000–43016 (43005, 43010 +1 per drink). A power-on rinse changes only the water
+23001 +5, 23005 +125, 23006 +218 for a cappuccino with milk clean, 0 per rinse) and 43000–43016 (43005, 43010 +1 per drink). A power-on rinse changes only the water
 values (100, 106, 109, 400–403).
 
 PAR 205–209 hold the serial number as 4 ASCII bytes each (big-endian, NUL/space padded). PAR 200–203 read

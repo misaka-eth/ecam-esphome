@@ -354,11 +354,14 @@ select:
           if (level >= 1 && level <= 4) id(machine).write_param(50, level - 1);
 
 # PAR 63 flags: bit 0 autostart OFF, 1 12-hour clock, 2 key beep, 3 cup light, 4 energy saving, 7 water filter.
+# restore_mode DISABLED: the default ALWAYS_OFF runs turn_off_action at boot and would clear every flag
+# on the machine (and with the filter flag the machine also resets PAR 109) whenever the ESP restarts.
 switch:
   - platform: template
     name: Autostart
     icon: mdi:alarm
     entity_category: config
+    restore_mode: DISABLED
     lambda: |-
       auto off = id(machine).param_bit(63, 0x01);
       if (!off) return {};
@@ -371,6 +374,7 @@ switch:
     name: 12-hour clock
     icon: mdi:clock-outline
     entity_category: config
+    restore_mode: DISABLED
     lambda: 'return id(machine).param_bit(63, 0x02);'
     turn_on_action:
       - lambda: 'id(machine).write_param_bits(63, 0x02, true);'
@@ -380,6 +384,7 @@ switch:
     name: Key beep
     icon: mdi:volume-high
     entity_category: config
+    restore_mode: DISABLED
     lambda: 'return id(machine).param_bit(63, 0x04);'
     turn_on_action:
       - lambda: 'id(machine).write_param_bits(63, 0x04, true);'
@@ -389,6 +394,7 @@ switch:
     name: Cup light
     icon: mdi:lightbulb-outline
     entity_category: config
+    restore_mode: DISABLED
     lambda: 'return id(machine).param_bit(63, 0x08);'
     turn_on_action:
       - lambda: 'id(machine).write_param_bits(63, 0x08, true);'
@@ -398,6 +404,7 @@ switch:
     name: Energy saving
     icon: mdi:leaf
     entity_category: config
+    restore_mode: DISABLED
     lambda: 'return id(machine).param_bit(63, 0x10);'
     turn_on_action:
       - lambda: 'id(machine).write_param_bits(63, 0x10, true);'
@@ -407,6 +414,7 @@ switch:
     name: Water filter
     icon: mdi:filter-outline
     entity_category: config
+    restore_mode: DISABLED
     lambda: 'return id(machine).param_bit(63, 0x80);'
     turn_on_action:
       - lambda: 'id(machine).write_param_bits(63, 0x80, true);'
