@@ -182,6 +182,24 @@ The service menu shows the same ids as `PAR <decimal>`.
 
 Write bit flags read-modify-write; a wrong full-word write changes several settings at once.
 The Statistics screen's "Total with hot milk" is PAR 3001 plus hot milk alone (3015); "Total teas" is 3025.
+Maintenance parameters (ECAM450.76.T, found by a read scan of PAR 0–2999 and diffs around single
+actions; misaka's machine reads 0 for most of them):
+
+| PAR | Value seen | Meaning |
+|-----|-----------|---------|
+| 63 bit 7 | 0 → 1 | water filter set in the menu (**confirmed**) |
+| 108 | 9 → 10 | filters installed (**confirmed**: +1 when a filter is set in the menu) |
+| 105 | 5 | descales (presumed) |
+| 100 | 87134 | water since the last descale, flow-meter pulses (25/ml): grows exactly 10× PAR 106 (presumed; unchanged by a filter change) |
+| 101 | +42 per espresso | unknown, per-brew amount |
+| 57, 505 | +1 per drink | unknown per-drink counters |
+| 401, 403 | +20 on power-on rinse + espresso | a second, small flow |
+| 51–56, 502, 503 | values shift between brews | looks like a buffer of the last brews |
+
+Only PAR 0, 32–35, 40–58, 61–63, 71, 100–116, 194, 199–215, 400–407 and 500–505 are non-zero below 3000;
+every id answers. Statistics (`A2`) also list blocks 23000–23009 (23004/23007/23008 +127 over a power-on
+plus espresso, perhaps seconds) and 43000–43016.
+
 PAR 205–209 hold the serial number as 4 ASCII bytes each (big-endian, NUL/space padded). PAR 200–203 read
 `523 10 3 22` on a machine built in autumn 2022: 201–203 look like month / day / year (2022-10-03),
 200 is unknown. PAR 199 read `0xE00C`. Settings the app hides for a model (autostart, 12-hour clock,

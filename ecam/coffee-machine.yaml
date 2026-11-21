@@ -828,6 +828,33 @@ sensor:
     state_class: total_increasing
     accuracy_decimals: 0
     update_interval: never
+  # Maintenance (found on an ECAM450.76.T, see docs/protocol.md): PAR 108 filters installed (confirmed:
+  # +1 when a filter is set in the menu), PAR 105 descales and PAR 100 water since the last descale in
+  # flow-meter pulses (25 per ml; presumed, not seen across a descale yet).
+  - platform: template
+    id: filters
+    name: Filters installed
+    icon: mdi:filter-outline
+    entity_category: diagnostic
+    state_class: total_increasing
+    accuracy_decimals: 0
+    update_interval: never
+  - platform: template
+    id: descales
+    name: Descales
+    icon: mdi:water-sync
+    entity_category: diagnostic
+    state_class: total_increasing
+    accuracy_decimals: 0
+    update_interval: never
+  - platform: template
+    id: water_since_descale
+    name: Water since descale
+    unit_of_measurement: L
+    device_class: water
+    state_class: total
+    accuracy_decimals: 2
+    update_interval: never
 
 binary_sensor:
   # The machine answers the 0x75 monitor, standby included. Off, unplugged or a wiring fault
@@ -844,7 +871,7 @@ binary_sensor:
             b->invalidate_state();
           for (auto *b : {id(tank_out), id(grounds_out)})
             b->invalidate_state();
-          for (auto *s : {id(progress), id(water_total), id(milk_cleans)})
+          for (auto *s : {id(progress), id(water_total), id(milk_cleans), id(filters), id(descales), id(water_since_descale)})
             s->publish_state(NAN);
     on_press:
       - lambda: 'id(machine).refresh(true);'
@@ -926,6 +953,9 @@ script:
           // PAR 106: flowmeter count / 10; 25 pulses per ml (weighed 105 g for 2620 pulses).
           id(machine).read_param(106, [](uint32_t v) { id(water_total).publish_state(v * 10 / 25.0f / 1000.0f); });
           id(machine).read_param(115, [](uint32_t v) { id(milk_cleans).publish_state(v); });
+          id(machine).read_param(108, [](uint32_t v) { id(filters).publish_state(v); });
+          id(machine).read_param(105, [](uint32_t v) { id(descales).publish_state(v); });
+          id(machine).read_param(100, [](uint32_t v) { id(water_since_descale).publish_state(v / 25000.0f); });
 
 interval:
   - interval: 60s
