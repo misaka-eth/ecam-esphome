@@ -189,16 +189,18 @@ actions; misaka's machine reads 0 for most of them):
 |-----|-----------|---------|
 | 63 bit 7 | 0 → 1 | water filter set in the menu (**confirmed**) |
 | 108 | 9 → 10 | filters installed (**confirmed**: +1 when a filter is set in the menu) |
+| 109 | 0 → 249 | water through the filter since it was set, unit as PAR 106 (**confirmed**: 0 while no filter was set, then grew exactly like 106) |
 | 105 | 5 | descales (presumed) |
-| 100 | 87134 | water since the last descale, flow-meter pulses (25/ml): grows exactly 10× PAR 106 (presumed; unchanged by a filter change) |
-| 101 | +42 per espresso | unknown, per-brew amount |
-| 57, 505 | +1 per drink | unknown per-drink counters |
-| 401, 403 | +20 on power-on rinse + espresso | a second, small flow |
+| 100 | 87134 | water since the last descale (presumed): grows by the sum of the flow meters PAR 400 + 401 (25 pulses/ml); unchanged by a filter change |
+| 400, 401 | +3470/+20 espresso, +1729/+14 rinse | two flow meters; 402/403 grow alike (lifetime totals) |
+| 101 | +42 per espresso, 0 per rinse | unknown, per-brew amount (grinding?) |
+| 57, 505 | +1 per drink, 0 per rinse | unknown per-drink counters |
 | 51–56, 502, 503 | values shift between brews | looks like a buffer of the last brews |
 
 Only PAR 0, 32–35, 40–58, 61–63, 71, 100–116, 194, 199–215, 400–407 and 500–505 are non-zero below 3000;
-every id answers. Statistics (`A2`) also list blocks 23000–23009 (23004/23007/23008 +127 over a power-on
-plus espresso, perhaps seconds) and 43000–43016.
+every id answers. Statistics (`A2`) also list blocks 23000–23009 (23004/23007/23008 +127 per espresso,
+0 per rinse) and 43000–43016 (43005, 43010 +1 per drink). A power-on rinse changes only the water
+values (100, 106, 109, 400–403).
 
 PAR 205–209 hold the serial number as 4 ASCII bytes each (big-endian, NUL/space padded). PAR 200–203 read
 `523 10 3 22` on a machine built in autumn 2022: 201–203 look like month / day / year (2022-10-03),

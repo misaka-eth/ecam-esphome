@@ -839,6 +839,16 @@ sensor:
     state_class: total_increasing
     accuracy_decimals: 0
     update_interval: never
+  # PAR 109: water through the filter since it was set in the menu, same unit as PAR 106 (confirmed:
+  # 0 before, then grew exactly like 106).
+  - platform: template
+    id: water_since_filter
+    name: Water since filter change
+    unit_of_measurement: L
+    device_class: water
+    state_class: total
+    accuracy_decimals: 2
+    update_interval: never
   - platform: template
     id: descales
     name: Descales
@@ -871,7 +881,7 @@ binary_sensor:
             b->invalidate_state();
           for (auto *b : {id(tank_out), id(grounds_out)})
             b->invalidate_state();
-          for (auto *s : {id(progress), id(water_total), id(milk_cleans), id(filters), id(descales), id(water_since_descale)})
+          for (auto *s : {id(progress), id(water_total), id(milk_cleans), id(filters), id(water_since_filter), id(descales), id(water_since_descale)})
             s->publish_state(NAN);
     on_press:
       - lambda: 'id(machine).refresh(true);'
@@ -954,6 +964,7 @@ script:
           id(machine).read_param(106, [](uint32_t v) { id(water_total).publish_state(v * 10 / 25.0f / 1000.0f); });
           id(machine).read_param(115, [](uint32_t v) { id(milk_cleans).publish_state(v); });
           id(machine).read_param(108, [](uint32_t v) { id(filters).publish_state(v); });
+          id(machine).read_param(109, [](uint32_t v) { id(water_since_filter).publish_state(v * 10 / 25.0f / 1000.0f); });
           id(machine).read_param(105, [](uint32_t v) { id(descales).publish_state(v); });
           id(machine).read_param(100, [](uint32_t v) { id(water_since_descale).publish_state(v / 25000.0f); });
 
