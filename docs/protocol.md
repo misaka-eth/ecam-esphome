@@ -46,7 +46,10 @@ answer   D0 LEN payload CRC16
 | `ED F0 <icon>` | Wi-Fi icon on the display, see below | |
 | `E2 F0 <hour> <minute>` | set the machine clock (app: `setHour`) | `E2 F0 00` ok |
 | `B0 F0 <bev>` | drink limits, see below | |
-| `BA F0 <n>` / `A3 F0` / `E8 F0 00 ED 7C` | app: Bean Adapt slot read / a per-profile u16 list / "remote control" check (byte 9 == 3); not decoded | |
+| `BA F0 <n>` | Bean Adapt slot read (longshot: BeanSystemRead) | |
+| `A3 F0` | recipe checksums (longshot: Checksum): one u16 per entry, then two u16 | |
+| `A8 F0 …` | drink order (longshot: RecipePriorityRead) | |
+| `E8 F0 00 ED 7C` | app "readRemoteControl": answer byte 9 == 3; meaning unknown | |
 
 Answer layouts (confirmed on an ECAM450.76.T through the firmware; the profile and custom-drink lists
 make answers up to ~140 bytes, so a reader must not cap frames at 64):
@@ -124,7 +127,11 @@ Boiler temperature and flow are **not** exposed: the service menu shows them, bu
 | `19` | visible in menu |
 | `1B` | index length: `01` with max temperature, `04` otherwise. Also changes from `01` to `04` when a recipe is saved with a custom amount, so it may be the cup-size preset (`04` = custom) |
 | `1C` | accessory (01 spout, 02 jug) |
-| `27` | `27 01` on start, `27 00` on save (sent by the app; not required) |
+| `27` | RINSE (app enum): rinse before the drink; the app's "skip rinse" re-sends the drink with op `06` and `27 00` |
+
+The app's tag enum (`TEMP(0)` … `RINSE(39)`) also names `03` grind, `04` blend, `05` infusion speed,
+`06` pre-infusion, `07` crema, `0A` milk temperature, `0E` tea profile, `18` programmable,
+`1A` visible in programming, `1F` iced, `20` mug size, `21` mug adjust, `25` ice cubes, `26` intensity.
 
 A minimal start is enough, e.g. filter-style 330 ml at strength 4:
 `83 F0 03 03 01 01 4A 02 04 06`. The machine answers `01 00` when it accepts the order; only send

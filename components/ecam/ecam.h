@@ -90,6 +90,19 @@ class Ecam : public Component, public uart::UARTDevice {
   void set_clock(uint8_t hour, uint8_t minute);
   // Logs every statistics counter (id = value) at INFO.
   void dump_counters() const;
+  const std::map<uint16_t, uint32_t> &counters() const { return this->stats_; }
+
+  // Exploration: read PAR start .. start+count-1 one by one in the background (reads only); keeps the
+  // non-zero values. scan_done() is false while it runs.
+  void scan_params(uint16_t start, uint16_t count);
+  const std::map<uint16_t, uint32_t> &scan_results() const { return this->scan_; }
+  bool scan_done() const { return this->scan_left_ == 0; }
+  uint16_t scan_answered() const { return this->scan_answered_; }
+  // "<tx> -> <rx>" of the last raw request.
+  const std::string &last_raw() const { return this->last_raw_; }
+
+  // Skip the rinse before the drink started from here (the app's SKIP_RINSE: op 06, RINSE 27 00).
+  void skip_rinse();
 
   void select_bean_adapt(uint8_t slot);
 
@@ -174,6 +187,12 @@ class Ecam : public Component, public uart::UARTDevice {
   uint8_t recipe_profile_{0};
   std::vector<std::pair<uint8_t, uint16_t>> recipe_tlv_;
   std::map<uint8_t, uint16_t> recipe_edits_;
+  std::map<uint16_t, uint32_t> scan_;
+  uint16_t scan_next_{0};
+  uint16_t scan_left_{0};
+  uint16_t scan_answered_{0};
+  void scan_step_();
+  std::string last_raw_;
   struct Limit { uint16_t min, def, max; };
   std::map<uint8_t, Limit> recipe_limits_;
   void read_limits_(uint8_t drink);

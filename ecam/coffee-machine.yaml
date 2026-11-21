@@ -91,10 +91,38 @@ api:
         slot: int
       then:
         - lambda: 'id(machine).select_bean_adapt(slot);'
-    # Logs every statistics counter (id = value) at INFO, for finding counters without an entity.
+    # Every statistics counter as {id: value}, returned to the caller (and logged at INFO).
     - action: dump_counters
+      supports_response: only
       then:
         - lambda: 'id(machine).dump_counters();'
+        - api.respond:
+            data: !lambda |-
+              for (auto &kv : id(machine).counters()) root[to_string(kv.first)] = kv.second;
+    # Exploration: read PAR start .. start+count-1 in the background (reads only, ~20 ms each), then
+    # fetch the non-zero values with scan_result.
+    - action: scan_params
+      variables:
+        start: int
+        count: int
+      then:
+        - lambda: 'id(machine).scan_params(start, count);'
+    - action: scan_result
+      supports_response: only
+      then:
+        - api.respond:
+            data: !lambda |-
+              root["done"] = id(machine).scan_done();
+              root["answered"] = id(machine).scan_answered();
+              JsonObject values = root["values"].to<JsonObject>();
+              for (auto &kv : id(machine).scan_results()) values[to_string(kv.first)] = kv.second;
+    # The answer to the last raw action: {"raw": "<tx> -> <rx>"}.
+    - action: raw_result
+      supports_response: only
+      then:
+        - api.respond:
+            data: !lambda |-
+              root["raw"] = id(machine).last_raw();
     # Debug: send a raw ECAM payload (hex, without 0D/len/CRC); the answer goes to the log at INFO.
     - action: raw
       variables:
@@ -152,6 +180,12 @@ button:
     icon: mdi:coffee-outline
     on_press:
       - lambda: 'id(machine).brew(0x01, 0, 0, 0, 0, -1);'
+  # Skips the rinse the machine runs before the drink started from here (the app's "skip rinse").
+  - platform: template
+    name: Skip rinse
+    icon: mdi:debug-step-over
+    on_press:
+      - lambda: 'id(machine).skip_rinse();'
   - platform: template
     name: Save recipe
     icon: mdi:content-save
@@ -379,6 +413,92 @@ switch:
       - lambda: 'id(machine).write_param_bits(63, 0x80, false);'
 
 number:
+  # More recipe values (the app's ingredient enum); a drink without the value shows unknown, the
+  # range of each is in "Recipe limits".
+  - platform: template
+    name: Recipe froth
+    icon: mdi:waves
+    mode: box
+    min_value: 0
+    max_value: 255
+    step: 1
+    update_interval: 1s
+    lambda: |-
+      auto v = id(machine).recipe_value(0x0B);
+      if (!v) return {};
+      return (float) *v;
+    set_action:
+      - lambda: 'id(machine).set_recipe_value(0x0B, (uint16_t) x);'
+  - platform: template
+    name: Recipe milk temperature
+    icon: mdi:thermometer
+    mode: box
+    min_value: 0
+    max_value: 255
+    step: 1
+    update_interval: 1s
+    lambda: |-
+      auto v = id(machine).recipe_value(0x0A);
+      if (!v) return {};
+      return (float) *v;
+    set_action:
+      - lambda: 'id(machine).set_recipe_value(0x0A, (uint16_t) x);'
+  - platform: template
+    name: Recipe inversion
+    icon: mdi:swap-vertical
+    mode: box
+    min_value: 0
+    max_value: 255
+    step: 1
+    update_interval: 1s
+    lambda: |-
+      auto v = id(machine).recipe_value(0x0C);
+      if (!v) return {};
+      return (float) *v;
+    set_action:
+      - lambda: 'id(machine).set_recipe_value(0x0C, (uint16_t) x);'
+  - platform: template
+    name: Recipe mug size
+    icon: mdi:cup
+    mode: box
+    min_value: 0
+    max_value: 255
+    step: 1
+    update_interval: 1s
+    lambda: |-
+      auto v = id(machine).recipe_value(0x20);
+      if (!v) return {};
+      return (float) *v;
+    set_action:
+      - lambda: 'id(machine).set_recipe_value(0x20, (uint16_t) x);'
+  - platform: template
+    name: Recipe ice cubes
+    icon: mdi:cube-outline
+    mode: box
+    min_value: 0
+    max_value: 255
+    step: 1
+    update_interval: 1s
+    lambda: |-
+      auto v = id(machine).recipe_value(0x25);
+      if (!v) return {};
+      return (float) *v;
+    set_action:
+      - lambda: 'id(machine).set_recipe_value(0x25, (uint16_t) x);'
+  - platform: template
+    name: Recipe intensity
+    icon: mdi:gauge
+    mode: box
+    min_value: 0
+    max_value: 255
+    step: 1
+    update_interval: 1s
+    lambda: |-
+      auto v = id(machine).recipe_value(0x26);
+      if (!v) return {};
+      return (float) *v;
+    set_action:
+      - lambda: 'id(machine).set_recipe_value(0x26, (uint16_t) x);'
   - platform: template
     name: Recipe coffee
     icon: mdi:coffee

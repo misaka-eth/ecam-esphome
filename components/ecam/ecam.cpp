@@ -600,19 +600,36 @@ void Ecam::delete_custom_drink(uint8_t slot) {
 
 // ---- recipes
 
+// Recipe tags as the app names them (enum TEMP(0) .. RINSE(39)); 08 is not in the app's enum.
 static const char *tag_name(uint8_t t) {
   switch (t) {
+    case 0x00: return "temp";
     case 0x01: return "coffee_ml";
     case 0x02: return "strength";
+    case 0x03: return "grind";
+    case 0x04: return "blend";
+    case 0x05: return "infusion_speed";
+    case 0x06: return "preinfusion";
+    case 0x07: return "crema";
     case 0x08: return "2x";
     case 0x09: return "milk_0.1s";
+    case 0x0A: return "milk_temp";
     case 0x0B: return "froth";
     case 0x0C: return "inversion";
     case 0x0D: return "water_temp";
+    case 0x0E: return "tea_profile";
     case 0x0F: return "water_ml";
+    case 0x18: return "programmable";
     case 0x19: return "visible";
+    case 0x1A: return "visible_in_programming";
     case 0x1B: return "index_length";
     case 0x1C: return "accessory";
+    case 0x1F: return "iced";
+    case 0x20: return "mug_size";
+    case 0x21: return "mug_adjust";
+    case 0x25: return "ice_cubes";
+    case 0x26: return "intensity";
+    case 0x27: return "rinse";
     default: return nullptr;
   }
 }
@@ -705,6 +722,51 @@ void Ecam::set_clock(uint8_t hour, uint8_t minute) {
   this->enqueue_({0xE2, 0xF0, hour, minute}, 2, 800, [hour, minute](const std::vector<uint8_t> *f) {
     ESP_LOGI(TAG, "clock %02u:%02u: %s", hour, minute, f ? ((*f)[4] == 0 ? "ok" : "rejected") : "no answer");
   });
+}
+
+void Ecam::scan_params(uint16_t start, uint16_t count) {
+  if (!this->scan_done()) {
+    ESP_LOGW(TAG, "scan: already running");
+    return;
+  }
+  this->scan_.clear();
+  this->scan_answered_ = 0;
+  this->scan_next_ = start;
+  this->scan_left_ = count;
+  ESP_LOGI(TAG, "scan PAR %u..%u", start, start + count - 1);
+  this->scan_step_();
+}
+
+// One read at a time, so the monitor poll keeps running between them.
+void Ecam::scan_step_() {
+  if (this->scan_left_ == 0)
+    return;
+  uint16_t pid = this->scan_next_++;
+  this->scan_left_--;
+  this->enqueue_({0x95, 0x0F, uint8_t(pid >> 8), uint8_t(pid & 0xFF), 0x01}, 1, 300,
+                 [this, pid](const std::vector<uint8_t> *f) {
+                   if (f && f->size() >= 12) {
+                     this->scan_answered_++;
+                     uint32_t v = be32(f->data() + 6);
+                     if (v)
+                       this->scan_[pid] = v;
+                   }
+                   if (this->scan_left_ == 0)
+                     ESP_LOGI(TAG, "scan done: %u answered, %u non-zero", this->scan_answered_,
+                              (unsigned) this->scan_.size());
+                   this->scan_step_();
+                 });
+}
+
+void Ecam::skip_rinse() {
+  if (!this->last_drink_) {
+    ESP_LOGW(TAG, "skip rinse: no drink started from here");
+    return;
+  }
+  this->enqueue_({0x83, 0xF0, this->last_drink_, 0x06, 0x27, 0x00, this->tail_(2)}, 1, 800,
+                 [](const std::vector<uint8_t> *f) {
+                   ESP_LOGI(TAG, "skip rinse -> %s", f ? format_hex(*f).c_str() : "no answer");
+                 }, true);
 }
 
 void Ecam::dump_counters() const {
@@ -851,8 +913,10 @@ void Ecam::raw(const std::string &hex) {
     return;
   }
   std::string tx = format_hex(p);
-  this->enqueue_(std::move(p), 1, 800, [tx](const std::vector<uint8_t> *f) {
+  this->last_raw_ = tx + " -> ...";
+  this->enqueue_(std::move(p), 1, 800, [this, tx](const std::vector<uint8_t> *f) {
     ESP_LOGI(TAG, "raw %s -> %s", tx.c_str(), f ? format_hex(*f).c_str() : "no answer");
+    this->last_raw_ = tx + " -> " + (f ? format_hex(*f) : std::string("no answer"));
   });
 }
 
