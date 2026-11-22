@@ -923,6 +923,15 @@ sensor:
     state_class: total
     accuracy_decimals: 2
     update_interval: never
+  # PAR 101: grounds in the container, + PAR 51 per brew (depends on strength and drink), 0 after
+  # emptying it (confirmed). The level where "grounds container full" comes is not known yet.
+  - platform: template
+    id: grounds_level
+    name: Grounds level
+    icon: mdi:delete-variant
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
   - platform: template
     id: descales
     name: Descales
@@ -955,7 +964,7 @@ binary_sensor:
             b->invalidate_state();
           for (auto *b : {id(tank_out), id(grounds_out)})
             b->invalidate_state();
-          for (auto *s : {id(progress), id(water_total), id(milk_cleans), id(filters), id(water_since_filter), id(descales), id(water_since_descale)})
+          for (auto *s : {id(progress), id(water_total), id(milk_cleans), id(filters), id(water_since_filter), id(descales), id(water_since_descale), id(grounds_level)})
             s->publish_state(NAN);
     on_press:
       - lambda: 'id(machine).refresh(true);'
@@ -1041,6 +1050,7 @@ script:
           id(machine).read_param(109, [](uint32_t v) { id(water_since_filter).publish_state(v * 10 / 25.0f / 1000.0f); });
           id(machine).read_param(105, [](uint32_t v) { id(descales).publish_state(v); });
           id(machine).read_param(100, [](uint32_t v) { id(water_since_descale).publish_state(v / 25000.0f); });
+          id(machine).read_param(101, [](uint32_t v) { id(grounds_level).publish_state(v); });
 
 interval:
   - interval: 60s
