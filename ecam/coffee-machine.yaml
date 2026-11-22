@@ -45,6 +45,7 @@ api:
   actions:
     # drink: id (1 espresso, 3 long/filter style, 6 americano, 0x0a flat white, 0x10 hot water, 0x16 tea, ...)
     # 0 / negative = keep the stored recipe value; temp -1 = not sent, 0..3 low..max
+    # Any value given sends the stored recipe with it (as the app does; milk drinks need that).
     - action: brew
       variables:
         drink: int

@@ -145,6 +145,16 @@ A minimal start is enough, e.g. filter-style 330 ml at strength 4:
 it in state 07 with no brew running. To-go drinks (`50`–`56`) start with no TLVs at all
 (`83 F0 50 03 06`) and take size and recipe from the active profile.
 
+Milk drinks are stricter (confirmed on a cappuccino, 2026-11-22). With no TLVs (`83 F0 07 03 06`) the machine
+uses its stored recipe and the drink runs. With TLVs it must get the app's set for the drink: the stored
+recipe's tags, accessory `1C` included and froth `0B` left out (the froth knob is mechanical, and no
+ECAM450.76 recipe in the app's MachinesModels.json lists it). `01 00 3B 09 00 E6 02 05 1B 04 1C 02` ran;
+`01 00 19 09 00 50`, `01 00 3B` alone and the full stored recipe with `0B 02` were all accepted (`01 00`)
+but stopped about 5 s into the milk: "clean knob" (alarm bit 14), then "steamer probe" (bit 10), phase 06
+instead of 07, monitor byte 10 = `01`, no coffee. A normal milk phase is state 0A phase 01 (~12 s) → 04
+(milk, progress up to ~66 %) → 07, then the coffee runs in state 07 like an espresso. Start code `02`
+(START_PROGRAM, the app's second step) is refused with `01 01` when nothing is running; `03` is right.
+
 A drink it could otherwise start but refuses gets `01 <code>` instead of `01 00`. The machine's own
 screen says why when the drink is chosen there, but shows nothing for a remote start, and the
 monitor (`75 0F`) stays as it was: state 07, no alarm, no water flag. The firmware logs the whole

@@ -201,6 +201,29 @@ void Ecam::on_frame_(const std::vector<uint8_t> &f) {
   }
 }
 
+// Recipe TLVs: tags 01, 09, 0f carry a u16, the rest a u8.
+static bool tag16(uint8_t t) { return t == 0x01 || t == 0x09 || t == 0x0F; }
+
+static std::vector<std::pair<uint8_t, uint16_t>> parse_tlv(const uint8_t *p, size_t n) {
+  std::vector<std::pair<uint8_t, uint16_t>> out;
+  for (size_t i = 0; i < n;) {
+    uint8_t t = p[i];
+    size_t w = tag16(t) ? 2 : 1;
+    if (i + 1 + w > n)
+      break;
+    out.push_back({t, w == 2 ? uint16_t((p[i + 1] << 8) | p[i + 2]) : p[i + 1]});
+    i += 1 + w;
+  }
+  return out;
+}
+
+static void put_tlv(std::vector<uint8_t> &p, uint8_t t, uint16_t v) {
+  p.push_back(t);
+  if (tag16(t))
+    p.push_back(v >> 8);
+  p.push_back(v & 0xFF);
+}
+
 void Ecam::power_on() {
   this->enqueue_({0x84, 0x0F, 0x02, 0x01}, 3, 800, [](const std::vector<uint8_t> *f) {
     ESP_LOGI(TAG, "power on: %s", f ? "ok" : "no answer");
@@ -222,21 +245,54 @@ bool Ecam::brew(int drink, int coffee_ml, int water_ml, float milk_s, int streng
     ESP_LOGW(TAG, "brew refused: machine not ready");
     return false;
   }
-  // 83 f0 <drink> 03 <tlv...> 06 ; missing params come from the stored recipe.
-  std::vector<uint8_t> p{0x83, 0xF0, uint8_t(drink), 0x03};
-  if (coffee_ml > 0) { p.push_back(0x01); p.push_back(coffee_ml >> 8); p.push_back(coffee_ml & 0xFF); }
-  if (strength > 0) { p.push_back(0x02); p.push_back(uint8_t(strength)); }
-  if (water_ml > 0) { p.push_back(0x0F); p.push_back(water_ml >> 8); p.push_back(water_ml & 0xFF); }
-  if (milk_s > 0) {
-    int ds = int(milk_s * 10 + 0.5f);
-    p.push_back(0x09); p.push_back(ds >> 8); p.push_back(ds & 0xFF);
-  }
+  // Like the app, send the stored recipe with the overrides applied. A milk drink with parameters
+  // stops at the milk ("clean knob", then "steamer probe", monitor byte 10 = 01) unless it carries the
+  // recipe's accessory tag and leaves out froth (0b): the froth knob is mechanical and no recipe of the
+  // ECAM450.76 lists it. Without any parameters the machine uses its stored recipe and that works too.
+  std::map<uint8_t, uint16_t> over;
+  if (coffee_ml > 0) over[0x01] = coffee_ml;
+  if (strength > 0) over[0x02] = strength;
+  if (water_ml > 0) over[0x0F] = water_ml;
+  if (milk_s > 0) over[0x09] = int(milk_s * 10 + 0.5f);
   if (temp >= 0 && temp <= 3) {
     // The app pairs 0d (water temp 0..3) with 1b 01 on max and 1b 04 otherwise.
-    p.push_back(0x1B); p.push_back(temp == 3 ? 0x01 : 0x04);
-    p.push_back(0x0D); p.push_back(uint8_t(temp));
+    over[0x1B] = temp == 3 ? 0x01 : 0x04;
+    over[0x0D] = temp;
   }
-  p.push_back(this->tail_(2));
+  if (over.empty()) {
+    this->brew_send_(uint8_t(drink), {0x83, 0xF0, uint8_t(drink), 0x03, this->tail_(2)});
+    return true;
+  }
+  uint8_t prof = this->active_profile_ ? this->active_profile_ : 1;
+  this->enqueue_({0xA6, 0xF0, prof, uint8_t(drink)}, 2, 500, [this, drink, over](const std::vector<uint8_t> *f) {
+    // 83 f0 <drink> 03 <tlv...> <tail>; the app sends tags below 0x17 plus 1b, 1c, 1f, 21, 26, 27.
+    if (!f || f->size() < 8) {
+      // Overrides alone would stop a milk drink halfway; better not to start.
+      ESP_LOGW(TAG, "brew 0x%02X: recipe read failed, not started", drink);
+      return;
+    }
+    std::vector<uint8_t> p{0x83, 0xF0, uint8_t(drink), 0x03};
+    auto left = over;
+    {
+      for (auto &tv : parse_tlv(f->data() + 6, f->size() - 8)) {
+        uint8_t t = tv.first;
+        if (t == 0x0B || !(t < 0x17 || t == 0x1B || t == 0x1C || t == 0x1F || t == 0x21 || t == 0x26 || t == 0x27))
+          continue;
+        auto it = left.find(t);
+        put_tlv(p, t, it != left.end() ? it->second : tv.second);
+        if (it != left.end())
+          left.erase(it);
+      }
+    }
+    for (auto &tv : left)
+      put_tlv(p, tv.first, tv.second);
+    p.push_back(this->tail_(2));
+    this->brew_send_(uint8_t(drink), std::move(p));
+  }, true);
+  return true;
+}
+
+void Ecam::brew_send_(uint8_t drink, std::vector<uint8_t> p) {
   this->last_drink_ = uint8_t(drink);
   // Retrying a brew could start it twice: one attempt, generous timeout.
   this->enqueue_(std::move(p), 1, 1500, [this, drink](const std::vector<uint8_t> *f) {
@@ -254,7 +310,6 @@ bool Ecam::brew(int drink, int coffee_ml, int water_ml, float milk_s, int streng
     this->last_brew_ = out;
     this->brew_answers_++;
   }, true);
-  return true;
 }
 
 void Ecam::stop() {
@@ -705,28 +760,6 @@ void Ecam::save_bean() {
 
 void Ecam::delete_bean() { this->write_bean_(this->bean_slot_, Bean{}); }
 
-// Recipe TLVs: tags 01, 09, 0f carry a u16, the rest a u8.
-static bool tag16(uint8_t t) { return t == 0x01 || t == 0x09 || t == 0x0F; }
-
-static std::vector<std::pair<uint8_t, uint16_t>> parse_tlv(const uint8_t *p, size_t n) {
-  std::vector<std::pair<uint8_t, uint16_t>> out;
-  for (size_t i = 0; i < n;) {
-    uint8_t t = p[i];
-    size_t w = tag16(t) ? 2 : 1;
-    if (i + 1 + w > n)
-      break;
-    out.push_back({t, w == 2 ? uint16_t((p[i + 1] << 8) | p[i + 2]) : p[i + 1]});
-    i += 1 + w;
-  }
-  return out;
-}
-
-static void put_tlv(std::vector<uint8_t> &p, uint8_t t, uint16_t v) {
-  p.push_back(t);
-  if (tag16(t))
-    p.push_back(v >> 8);
-  p.push_back(v & 0xFF);
-}
 
 void Ecam::delete_custom_drink(uint8_t slot) {
   if (slot < 1 || slot > 6 || !this->active_profile_)

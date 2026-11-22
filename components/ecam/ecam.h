@@ -188,6 +188,7 @@ class Ecam : public Component, public uart::UARTDevice {
   std::vector<std::function<void()>> status_cbs_;
 
   void read_stats_(uint16_t start, int pages);
+  void brew_send_(uint8_t drink, std::vector<uint8_t> p);
 #ifdef USE_SENSOR
   void read_counters_();
 #endif
