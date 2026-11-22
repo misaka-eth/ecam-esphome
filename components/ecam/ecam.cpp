@@ -356,6 +356,22 @@ void Ecam::read_param(uint16_t pid, std::function<void(uint32_t)> cb) {
                  });
 }
 
+void Ecam::read_params(uint16_t pid, uint8_t n, std::function<void(const std::vector<uint32_t> &)> cb) {
+  if (n == 0 || n > 48)
+    return;
+  this->enqueue_({0x95, 0x0F, uint8_t(pid >> 8), uint8_t(pid & 0xFF), n}, 2, 500,
+                 [this, pid, n, cb](const std::vector<uint8_t> *f) {
+                   if (!f || f->size() < 6u + 4u * n + 2u)
+                     return;
+                   std::vector<uint32_t> v(n);
+                   for (uint8_t i = 0; i < n; i++) {
+                     v[i] = be32(f->data() + 6 + 4 * i);
+                     this->params_[pid + i] = v[i];
+                   }
+                   cb(v);
+                 });
+}
+
 void Ecam::write_param(uint16_t pid, uint32_t value) {
   this->enqueue_({0x90, 0x0F, uint8_t(pid >> 8), uint8_t(pid & 0xFF), uint8_t(value >> 24), uint8_t(value >> 16),
                   uint8_t(value >> 8), uint8_t(value)},

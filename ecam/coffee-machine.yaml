@@ -945,6 +945,121 @@ sensor:
     state_class: measurement
     accuracy_decimals: 0
     update_interval: never
+  # Parameters still being decoded (docs/protocol.md), read once a minute to log them in Home Assistant.
+  # 51/53/55 describe the newest brew: grounds added to the container level (PAR 101), measured dose,
+  # dose setpoint by strength.
+  - platform: template
+    id: par_40
+    name: PAR 40
+    icon: mdi:magnify
+    entity_category: diagnostic
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+  - platform: template
+    id: par_41
+    name: PAR 41
+    icon: mdi:magnify
+    entity_category: diagnostic
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+  - platform: template
+    id: par_42
+    name: PAR 42
+    icon: mdi:magnify
+    entity_category: diagnostic
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+  - platform: template
+    id: par_43
+    name: PAR 43
+    icon: mdi:magnify
+    entity_category: diagnostic
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+  - platform: template
+    id: par_45
+    name: PAR 45
+    icon: mdi:magnify
+    entity_category: diagnostic
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+  - platform: template
+    id: par_47
+    name: PAR 47
+    icon: mdi:magnify
+    entity_category: diagnostic
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+  - platform: template
+    id: par_48
+    name: PAR 48
+    icon: mdi:magnify
+    entity_category: diagnostic
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+  - platform: template
+    id: par_49
+    name: PAR 49
+    icon: mdi:magnify
+    entity_category: diagnostic
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+  - platform: template
+    id: par_57
+    name: PAR 57
+    icon: mdi:magnify
+    entity_category: diagnostic
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+  - platform: template
+    id: par_58
+    name: PAR 58
+    icon: mdi:magnify
+    entity_category: diagnostic
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+  - platform: template
+    id: par_116
+    name: PAR 116
+    icon: mdi:magnify
+    entity_category: diagnostic
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+  - platform: template
+    id: par_51
+    name: Last brew grounds
+    icon: mdi:coffee-outline
+    entity_category: diagnostic
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+  - platform: template
+    id: par_53
+    name: Last brew dose
+    icon: mdi:coffee-outline
+    entity_category: diagnostic
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+  - platform: template
+    id: par_55
+    name: Last brew dose setpoint
+    icon: mdi:coffee-outline
+    entity_category: diagnostic
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
   - platform: template
     id: descales
     name: Descales
@@ -1064,6 +1179,15 @@ script:
           id(machine).read_param(105, [](uint32_t v) { id(descales).publish_state(v); });
           id(machine).read_param(100, [](uint32_t v) { id(water_since_descale).publish_state(v / 25000.0f); });
           id(machine).read_param(101, [](uint32_t v) { id(grounds_level).publish_state(v); });
+          // PAR 40-58 in one frame, PAR 116 on its own.
+          id(machine).read_params(40, 19, [](const std::vector<uint32_t> &v) {
+            for (auto p : std::vector<std::pair<int, sensor::Sensor *>>{{40, id(par_40)}, {41, id(par_41)},
+                 {42, id(par_42)}, {43, id(par_43)}, {45, id(par_45)}, {47, id(par_47)}, {48, id(par_48)},
+                 {49, id(par_49)}, {51, id(par_51)}, {53, id(par_53)}, {55, id(par_55)}, {57, id(par_57)},
+                 {58, id(par_58)}})
+              p.second->publish_state(v[p.first - 40]);
+          });
+          id(machine).read_param(116, [](uint32_t v) { id(par_116).publish_state(v); });
 
 interval:
   - interval: 60s

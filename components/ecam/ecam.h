@@ -49,6 +49,8 @@ class Ecam : public Component, public uart::UARTDevice {
   void stop();
   // Parameters (95 read / 90 write). Every read lands in a cache that param() returns; a write re-reads.
   void read_param(uint16_t pid, std::function<void(uint32_t)> cb = nullptr);
+  // n consecutive parameters in one frame (95 0f <pid> <n>, n <= 48); cb gets them in order, nothing on failure.
+  void read_params(uint16_t pid, uint8_t n, std::function<void(const std::vector<uint32_t> &)> cb);
   void write_param(uint16_t pid, uint32_t value);
   // Read-modify-write of flag bits (PAR 63); never writes when the read fails.
   void write_param_bits(uint16_t pid, uint32_t mask, bool on);
