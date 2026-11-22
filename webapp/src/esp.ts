@@ -63,13 +63,14 @@ export function useEntity(domain: string, name: string): Entity | undefined {
 
 export async function call(domain: string, name: string, method: string, params: Record<string, string | number> = {}) {
   const q = new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)])).toString();
-  const res = await fetch(`/${domain}/${encodeURIComponent(name)}/${method}${q ? `?${q}` : ''}`, { method: 'POST' });
+  const res = await fetch(`/${domain}/${encodeURIComponent(name)}/${method}${q ? `?${q}` : ''}`, { method: 'POST', body: '' });
   if (!res.ok) throw new Error(`${domain}/${name}/${method}: ${res.status}`);
 }
 
 // Helpers for reading entity values.
+// Sensors send numbers, numbers send strings ("109", "NaN" when unknown).
 export function num(e?: Entity): number | undefined {
-  const v = e?.value;
+  const v = typeof e?.value === 'string' ? Number(e.value) : e?.value;
   return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
 }
 

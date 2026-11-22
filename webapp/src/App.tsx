@@ -95,7 +95,7 @@ function BrewTab() {
   const state = str(entities['text_sensor/State']);
   const brewing = on(entities['binary_sensor/Brewing']);
   const progress = num(entities['sensor/Progress']);
-  const alarms = str(entities['text_sensor/Alarms']);
+  const alarms = (str(entities['text_sensor/Alarms']) ?? '').split(', ').filter((a) => a && a !== 'none');
   const drinkSel = entities['select/Drink'];
   const problems = PROBLEMS.filter((p) => on(entities[`binary_sensor/${p}`]));
   const favourites = (str(entities['text_sensor/Favourites']) ?? '').split(', ').filter((f) => f && f !== 'none');
@@ -109,7 +109,7 @@ function BrewTab() {
             <div className="text-xs uppercase tracking-wider text-ink-dim">{t('Status')}</div>
             <div className="mt-1 text-3xl font-semibold capitalize">{t(state ?? '–')}</div>
           </div>
-          <div className="ml-auto flex flex-wrap gap-2">
+          <div className="flex w-full flex-wrap gap-2 sm:ml-auto sm:w-auto">
             {off ? (
               <Press name="Power on" variant="primary" icon="power" />
             ) : (
@@ -133,7 +133,7 @@ function BrewTab() {
           </div>
         )}
         <div className="mt-5 flex flex-wrap gap-2">
-          {problems.length === 0 && !alarms ? (
+          {problems.length === 0 && alarms.length === 0 ? (
             <Pill tone="green">
               <Icon name="check" className="h-3.5 w-3.5" /> {t('No alarms')}
             </Pill>
@@ -143,11 +143,7 @@ function BrewTab() {
               <Icon name="alert" className="h-3.5 w-3.5" /> {t(p)}
             </Pill>
           ))}
-          {alarms &&
-            alarms
-              .split(', ')
-              .filter((a) => a && a !== 'none')
-              .map((a) => (
+          {alarms.map((a) => (
                 <Pill key={a} tone="amber">
                   {a}
                 </Pill>
@@ -449,11 +445,18 @@ function StatsTab() {
 function Metric({ name, domain = 'sensor' }: { name: string; domain?: string }) {
   const e = useEntity(domain, name);
   if (!e) return null;
+  const b = on(e);
+  const text = b !== undefined ? t(b ? 'Yes' : 'No') : t((e.state && e.state !== 'NA' ? e.state : str(e)) ?? '–');
+  if (text.length > 24)
+    return (
+      <div className="py-2">
+        <div className="text-[15px] text-ink">{t(name)}</div>
+        <div className="mt-1 break-words text-sm text-ink-muted">{text}</div>
+      </div>
+    );
   return (
     <Row label={t(name)}>
-      <span className="font-mono tabular-nums text-ink">
-        <Value e={e} />
-      </span>
+      <span className="font-mono tabular-nums text-ink">{text}</span>
     </Row>
   );
 }

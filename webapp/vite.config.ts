@@ -11,7 +11,16 @@ const api = '^/(events|sensor|binary_sensor|text_sensor|select|number|switch|but
 export default defineConfig({
   plugins: [react(), cssInjectedByJs()],
   define: { 'process.env.NODE_ENV': JSON.stringify('production') },
-  server: { proxy: { [api]: { target: esp, changeOrigin: true } } },
+  server: {
+    proxy: {
+      [api]: {
+        target: esp,
+        changeOrigin: true,
+        // web_server rejects cross-origin requests; to the ESP these come from the proxy itself.
+        configure: (proxy) => proxy.on('proxyReq', (req) => req.removeHeader('origin')),
+      },
+    },
+  },
   build: {
     outDir: '../components/ecam_web',
     emptyOutDir: false,

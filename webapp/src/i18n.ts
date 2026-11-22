@@ -58,7 +58,7 @@ const de: Record<string, string> = {
 };
 
 const drinksDe: Record<string, string> = {
-  espresso: 'Espresso', coffee: 'Kaffee', 'long coffee': 'Long Coffee', '2x espresso': '2× Espresso',
+  espresso: 'Espresso', coffee: 'Kaffee', 'long coffee': 'Long Coffee', long: 'Long Coffee', '2x espresso': '2× Espresso',
   'doppio+': 'Doppio+', americano: 'Americano', cappuccino: 'Cappuccino', 'latte macchiato': 'Latte Macchiato',
   caffelatte: 'Caffelatte', 'flat white': 'Flat White', 'espresso macchiato': 'Espresso Macchiato',
   'hot milk': 'Heiße Milch', 'cappuccino doppio+': 'Cappuccino Doppio+', 'cappuccino reverse': 'Cappuccino Reverse',
@@ -78,7 +78,7 @@ export function t(s: string): string {
 // Drink names: "mug ..." keeps the base name with a mug prefix, "custom n" stays numbered.
 export function drink(s: string): string {
   const name = s.replace(/ count$/i, '').toLowerCase();
-  if (!isDe) return name.replace(/(^|[\s+-])\w/g, (c) => c.toUpperCase()).replace(/\b2x\b/i, '2×');
+  if (!isDe) return (name === 'long' ? 'long coffee' : name).replace(/(^|[\s+-])\w/g, (c) => c.toUpperCase()).replace(/\b2x\b/i, '2×');
   if (name.startsWith('mug ')) return `${drinksDe[name.slice(4)] ?? name.slice(4)} (Becher)`;
   if (name.startsWith('custom ')) return `Eigenes Getränk ${name.slice(7)}`;
   return drinksDe[name] ?? name;
