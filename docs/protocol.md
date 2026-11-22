@@ -46,10 +46,10 @@ answer   D0 LEN payload CRC16
 | `ED F0 <icon>` | Wi-Fi icon on the display, see below | |
 | `E2 F0 <hour> <minute>` | set the machine clock (app: `setHour`) | `E2 F0 00` ok |
 | `B0 F0 <bev>` | drink limits, see below | |
-| `BA F0 <n>` | Bean Adapt slot read (longshot: BeanSystemRead) | |
-| `A3 F0` | recipe checksums (longshot: Checksum): one u16 per entry, then two u16 | |
-| `A8 F0 …` | drink order (longshot: RecipePriorityRead) | |
-| `E8 F0 00 ED 7C` | app "readRemoteControl": answer byte 9 == 3; meaning unknown | |
+| `BA F0 <n>` | Bean Adapt slot read (longshot: BeanSystemRead), n = 1..6 (7: no answer) | `n`, name 20×UTF-16BE (NUL-terminated, old bytes may follow), 6 setting bytes (all 0 for an unused slot; `08 01 03 00 01 01` on a set-up slot, meaning unknown). Unused slots are named "Kaffeebohnen n" on a German machine |
+| `A3 F0` | recipe checksums (longshot: Checksum) | 6 × u16; on an ECAM450.76.T the first four are one per profile (only the profile with an edited recipe differs: `33F8 360B 360B 360B`), the last two unknown |
+| `A8 F0 <profile>` | drink order (longshot: RecipePriorityRead) | `profile` then the drink ids in display order (43 on an ECAM450.76.T: all drinks of the model plus defined custom drinks); profiles without an own order answer only `profile`; without the profile byte the answer is one byte (`A7`) |
+| `E8 F0 00` | app "readRemoteControl" (`ED 7C` in the app's bytes is the frame CRC) | the mainboard does not answer it (nor `E8 0F 00`): handled by the stock Wi-Fi module |
 
 Answer layouts (confirmed on an ECAM450.76.T through the firmware; the profile and custom-drink lists
 make answers up to ~140 bytes, so a reader must not cap frames at 64):
