@@ -463,6 +463,7 @@ function Metric({ name, domain = 'sensor' }: { name: string; domain?: string }) 
 
 function MaintenanceTab() {
   const descale = on(useEntity('binary_sensor', 'Descale needed'));
+  const grounds = on(useEntity('binary_sensor', 'Grounds container full'));
   return (
     <Grid>
       <Card title={t('Maintenance')} icon="wrench" right={descale ? <Pill tone="amber">{t('Descale needed')}</Pill> : undefined}>
@@ -470,6 +471,9 @@ function MaintenanceTab() {
         <Metric name="Descales" />
         <Metric name="Water total" />
         <Metric name="Milk cleans" />
+      </Card>
+      <Card title={t('Grounds container')} icon="trash" right={grounds ? <Pill tone="amber">{t('Grounds container full')}</Pill> : undefined}>
+        <Metric name="Grounds level" />
       </Card>
       <Card title={t('Water filter')} icon="drop">
         <SwitchRow name="Water filter" />
