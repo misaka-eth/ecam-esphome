@@ -88,12 +88,14 @@ Deleting a profile is a rename to an all-zero name. Deleting a custom drink: `83
 | 6 | phase within the state (coffee brews inside state 07 with a non-zero phase) |
 | 7 | progress, 0–100 % |
 | 8 | flags: bit 0 set in normal operation; **bit 4 set while a brew waits for beans** (confirmed: the hopper ran out mid-brew, alarms stayed 0, state 07 phase 10 progress 0; cleared when beans were added) |
-| 9–12 | not decoded; stayed 00 through power-on, rinse and an espresso |
+| 9–12 | not decoded; stayed 00 through power-on, rinse, an espresso and hot water |
 
 Phases seen (byte 6, one sample per second): power-on in state 01 runs 01 → 02 → 05 (rinse, progress
 0 → 100 in ~20 s) → 06; an espresso in state 07 runs 04 → 05 → 06 (grinding, switches bits 1/2 brew-unit motor)
 → 08 → 09 → 0A → 0B (extraction, progress 5 → 100 in ~15 s) → 0D → 0E → 00. The live counters (PAR 3000+)
-went up at 0E, before the machine was ready again.
+went up at 0E, before the machine was ready again. Hot water (spout in, accessory 01, switch bit 0) runs in
+state 0B: 02 → 03 (dispensing, progress 0 → 100 in ~22 s for 80 ml) → 04 → 06 → back to 07/00. Brewing it with
+water_ml 80 instead of the stored 150 poured about 90 ml (PAR 106), so the brew overrides are honoured.
 
 Switches (physical sensors; the display's "insert …" prompts come from here, not from alarms):
 bit 0 spout, 1 brew-unit motor up, 2 brew-unit motor down, **3 grounds container out**, **4 water tank
