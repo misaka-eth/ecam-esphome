@@ -200,6 +200,16 @@ button:
     icon: mdi:reload
     on_press:
       - lambda: 'id(machine).read_recipe(ecam::Ecam::drink_id(std::string(id(drink).current_option())), 0);'
+  - platform: template
+    name: Save bean
+    icon: mdi:content-save
+    on_press:
+      - lambda: 'id(machine).save_bean();'
+  - platform: template
+    name: Delete bean
+    icon: mdi:delete
+    on_press:
+      - lambda: 'id(machine).delete_bean();'
   # The drink chosen in "Drink", with the active profile's stored recipe.
   - platform: template
     name: Brew drink
@@ -210,6 +220,31 @@ button:
 # Settings (PAR 50, 61-65), including the ones the app hides for this model. Bit flags are written
 # read-modify-write, so one switch never changes another setting.
 select:
+  # Bean Adapt editor: "Bean slot" loads a slot into the Bean entities, "Save bean" writes it.
+  - platform: template
+    name: Bean slot
+    icon: mdi:seed-outline
+    update_interval: 1s
+    options: ["1", "2", "3", "4", "5", "6"]
+    lambda: 'return to_string(id(machine).bean_edit_slot());'
+    set_action:
+      - lambda: 'id(machine).edit_bean(atoi(x.c_str()));'
+  - platform: template
+    name: Bean temperature
+    icon: mdi:thermometer
+    update_interval: 1s
+    options: [low, mid, high, very high]
+    lambda: 'return id(machine).bean_temperature();'
+    set_action:
+      - lambda: 'id(machine).set_bean_temperature(x);'
+  - platform: template
+    name: Bean aroma
+    icon: mdi:scent
+    update_interval: 1s
+    options: [pre-ground, extra mild, mild, normal, strong, extra strong]
+    lambda: 'return id(machine).bean_aroma();'
+    set_action:
+      - lambda: 'id(machine).set_bean_aroma(x);'
   - platform: template
     id: drink
     name: Drink
@@ -425,6 +460,17 @@ switch:
       - lambda: 'id(machine).write_param_bits(63, 0x80, false);'
 
 number:
+  - platform: template
+    name: Bean grind
+    icon: mdi:grain
+    mode: slider
+    min_value: 1
+    max_value: 7
+    step: 0.5
+    update_interval: 1s
+    lambda: 'return id(machine).bean_grind();'
+    set_action:
+      - lambda: 'id(machine).set_bean_grind(x);'
   # More recipe values (the app's ingredient enum); a drink without the value shows unknown, the
   # range of each is in "Recipe limits".
   - platform: template
@@ -590,6 +636,15 @@ number:
 # Profile names (10 characters), renamed on the machine when changed here.
 text:
   - platform: template
+    name: Bean name
+    icon: mdi:seed-outline
+    mode: text
+    max_length: 20
+    update_interval: 1s
+    lambda: 'return id(machine).bean_name();'
+    set_action:
+      - lambda: 'id(machine).set_bean_name(std::string(x));'
+  - platform: template
     name: Profile 1 name
     icon: mdi:account-edit
     entity_category: config
@@ -672,8 +727,8 @@ text_sensor:
     icon: mdi:coffee-to-go-outline
     update_interval: 10s
     lambda: 'return id(machine).custom_drinks_text();'
-  # Bean Adapt slots set up on the machine (select one with the select_bean_adapt action; the machine
-  # does not report which slot is active).
+  # Bean Adapt slots set up on the machine (the select_bean_adapt action picks one; the machine does not
+  # report which slot is active).
   - platform: template
     name: Bean slots
     icon: mdi:seed-outline

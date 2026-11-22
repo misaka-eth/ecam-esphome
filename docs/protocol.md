@@ -42,11 +42,11 @@ answer   D0 LEN payload CRC16
 | `AA F0 <slot> <n>` / `AB F0 <slot> 01 <name UTF-16BE 20 B> <image>` | read / write custom drink name | |
 | `AC F0 <profile>` / `AD F0 <profile> <11 bev ids>` | read / write favourites (first = newest, `00` = empty) | write ACK `00 01` |
 | `B0 F0 <n>` | drink limits (min/default/max per tag) | |
-| `B9 F0 <slot>` / `BB F0 <slot> <name 40 B> <grind> <temp> <aroma> <blend> <roast>` | select / write Bean Adapt slot | |
+| `B9 F0 <slot>` / `BB F0 <slot> <name 40 B> <grind> <temp> <aroma> 00 <set up>` | select / write Bean Adapt slot (app: BeanSystem; grind in half steps 2..14 = 1.0..7.0, temperature 0..3 low/mid/high/very high, aroma 0..5 pre-ground/extra mild/mild/normal/strong/extra strong, set up 1 = slot in use) | |
 | `ED F0 <icon>` | Wi-Fi icon on the display, see below | |
 | `E2 F0 <hour> <minute>` | set the machine clock (app: `setHour`) | `E2 F0 00` ok |
 | `B0 F0 <bev>` | drink limits, see below | |
-| `BA F0 <n>` | Bean Adapt slot read (longshot: BeanSystemRead), n = 1..6 (7: no answer) | `n`, name 20×UTF-16BE (NUL-terminated, old bytes may follow), 6 setting bytes (all 0 for an unused slot; `08 01 03 00 01 01` on a set-up slot, meaning unknown). Unused slots are named "Kaffeebohnen n" on a German machine. `B9 F0 n` answers `n 01` even for an unused slot; BA does not show which slot is active |
+| `BA F0 <n>` | Bean Adapt slot read (longshot: BeanSystemRead), n = 1..6 (7: no answer) | `n`, name 20×UTF-16BE (NUL-terminated, old bytes may follow), grind, temperature, aroma, 00, set up (1), enabled — as `BB`; an unused slot reads all 0 and is named "Kaffeebohnen n" on a German machine. `B9 F0 n` answers `n 01` even for an unused slot; BA does not show which slot is active. The Bean Adapt drinks are C8..CD for slots 1..6 |
 | `A3 F0` | recipe checksums (longshot: Checksum) | 6 × u16; on an ECAM450.76.T the first four are one per profile (only the profile with an edited recipe differs: `33F8 360B 360B 360B`), the last two unknown |
 | `A8 F0 <profile>` | drink order (longshot: RecipePriorityRead) | `profile` then the drink ids in display order (43 on an ECAM450.76.T: all drinks of the model plus defined custom drinks); profiles without an own order answer only `profile`; without the profile byte the answer is one byte (`A7`) |
 | `E8 F0 00` | app "readRemoteControl" (`ED 7C` in the app's bytes is the frame CRC) | the mainboard does not answer it (nor `E8 0F 00`): handled by the stock Wi-Fi module |

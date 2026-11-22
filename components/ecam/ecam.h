@@ -72,8 +72,22 @@ class Ecam : public Component, public uart::UARTDevice {
   void set_favorites(const std::string &drinks);
   optional<std::string> custom_drinks_text() const;
   void delete_custom_drink(uint8_t slot);
-  // Bean Adapt slots 1..6 that are set up: "1 <name> (<6 setting bytes>)", read with the device info.
+  // Bean Adapt slots 1..6 (BA read with the device info, BB write). Text: the slots that are set up,
+  // "1 <name> (grind 4.0, mid, normal)". Editing works on one slot: edit_bean() loads it, the setters
+  // change the copy, save_bean() writes it, delete_bean() clears the slot.
   optional<std::string> bean_slots_text() const;
+  void edit_bean(uint8_t slot);
+  uint8_t bean_edit_slot() const { return this->bean_slot_; }
+  optional<std::string> bean_name() const;
+  optional<float> bean_grind() const;
+  optional<std::string> bean_temperature() const;
+  optional<std::string> bean_aroma() const;
+  void set_bean_name(const std::string &name) { this->bean_edit_.name = name; }
+  void set_bean_grind(float grind);
+  void set_bean_temperature(const std::string &name);
+  void set_bean_aroma(const std::string &name);
+  void save_bean();
+  void delete_bean();
 
   // Stored recipes (A6 read, 83 .. 00 .. 05 save). The text is "<profile> <drink>: tag value, ...".
   void read_recipe(int drink, int profile);
@@ -185,8 +199,19 @@ class Ecam : public Component, public uart::UARTDevice {
   bool favorites_valid_{false};
   std::array<std::string, 6> custom_names_;
   bool customs_valid_{false};
-  std::array<std::string, 6> bean_slots_;  // empty: slot not set up
-  uint8_t beans_read_{0};                  // bit per slot answered
+  struct Bean {
+    std::string name;
+    uint8_t grind{0};  // half steps: 8 = 4.0
+    uint8_t temperature{0};
+    uint8_t aroma{0};
+    bool used{false};
+  };
+  void read_bean_(uint8_t slot);
+  void write_bean_(uint8_t slot, const Bean &b);
+  std::array<Bean, 6> beans_;
+  uint8_t beans_read_{0};  // bit per slot answered
+  uint8_t bean_slot_{1};
+  Bean bean_edit_;
   std::string recipe_text_;
   uint8_t recipe_drink_{0};
   uint8_t recipe_profile_{0};

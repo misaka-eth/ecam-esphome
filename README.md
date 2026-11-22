@@ -30,7 +30,8 @@ Copy `example.yaml` into the ESPHome dashboard as your device file and add the k
 - Settings, including the ones the app hides for some models: coffee temperature, auto-off, water
   hardness, autostart (on/off, hour, minute), 12-hour clock, key beep, cup light, energy saving, water filter.
 - Profiles: active profile, editable profile names; favourites and custom drink names of the
-  active profile; the Bean Adapt slots set up on the machine (`Bean slots`).
+  active profile; the Bean Adapt slots set up on the machine (`Bean slots`) and an editor for them (`Bean slot`,
+  name, grind, temperature, aroma, `Save bean`, `Delete bean`).
 - API actions for stored recipes (`read_recipe`, `save_recipe`, answer in the `Recipe` sensor),
   `set_favorites`, `delete_custom_drink`, `select_bean_adapt` and `raw`.
 - Diagnostics: serial number, production date, EEPROM version, PIN (disabled by default).

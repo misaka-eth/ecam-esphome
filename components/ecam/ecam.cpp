@@ -1,5 +1,6 @@
 #include "ecam.h"
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <strings.h>
@@ -346,9 +347,10 @@ static std::string utf16be_to_utf8(const uint8_t *p, size_t n) {
   return out;
 }
 
-static std::vector<uint8_t> utf8_to_utf16be20(const std::string &s) {
+// UTF-8 -> UTF-16BE, cut and NUL-padded to `bytes`.
+static std::vector<uint8_t> utf8_to_utf16be(const std::string &s, size_t bytes) {
   std::vector<uint8_t> out;
-  for (size_t i = 0; i < s.size() && out.size() < 20;) {
+  for (size_t i = 0; i < s.size() && out.size() < bytes;) {
     uint8_t b = s[i];
     uint32_t c;
     size_t n;
@@ -364,7 +366,7 @@ static std::vector<uint8_t> utf8_to_utf16be20(const std::string &s) {
     out.push_back(uint8_t(c >> 8));
     out.push_back(uint8_t(c));
   }
-  out.resize(20, 0);
+  out.resize(bytes, 0);
   return out;
 }
 
@@ -378,19 +380,8 @@ void Ecam::refresh(bool device_info) {
     // 199 EEPROM version, 200-203 production date, 205-209 serial number, 210 PIN.
     for (uint16_t pid : {199, 200, 201, 202, 203, 205, 206, 207, 208, 209, 210})
       this->read_param(pid);
-    // Bean Adapt slots: ba f0 n -> n, name 20 x UTF-16BE, 6 setting bytes (all 0: not set up).
-    for (uint8_t n = 1; n <= 6; n++) {
-      this->enqueue_({0xBA, 0xF0, n}, 2, 500, [this, n](const std::vector<uint8_t> *f) {
-        if (!f || f->size() < 5 + 40 + 6 + 2 || (*f)[4] != n)
-          return;
-        const uint8_t *set = f->data() + 45;
-        std::string &slot = this->bean_slots_[n - 1];
-        slot.clear();
-        if (std::any_of(set, set + 6, [](uint8_t b) { return b != 0; }))
-          slot = utf16be_to_utf8(f->data() + 5, 40) + " (" + format_hex(set, 6) + ")";
-        this->beans_read_ |= 1 << (n - 1);
-      });
-    }
+    for (uint8_t n = 1; n <= 6; n++)
+      this->read_bean_(n);
   }
   // Active profile: answer a9 f0 .. <slot>, the last byte before the CRC.
   this->enqueue_({0xA9, 0xF0}, 2, 500, [this](const std::vector<uint8_t> *f) {
@@ -478,7 +469,7 @@ void Ecam::rename_profile(uint8_t slot, const std::string &name) {
     }
     uint8_t mug = (*f)[f->size() - 3];
     std::vector<uint8_t> p{0xA5, 0xF0, slot, slot};
-    auto n = utf8_to_utf16be20(name);
+    auto n = utf8_to_utf16be(name, 20);
     p.insert(p.end(), n.begin(), n.end());
     p.push_back(0x01);
     p.push_back(mug);
@@ -569,19 +560,125 @@ optional<std::string> Ecam::custom_drinks_text() const {
   return out.empty() ? std::string("none") : out;
 }
 
+// ---- Bean Adapt slots (app: BeanSystem). ba f0 n -> n, name 20 x UTF-16BE, grind (half steps),
+// temperature, aroma, 00, set-up flag, enabled; bb f0 n <same, without the last byte> writes a slot.
+
+static const char *const BEAN_TEMPERATURES[] = {"low", "mid", "high", "very high"};
+static const char *const BEAN_AROMAS[] = {"pre-ground", "extra mild", "mild", "normal", "strong", "extra strong"};
+
+template<size_t N> static optional<uint8_t> index_of(const char *const (&names)[N], const std::string &s) {
+  for (size_t i = 0; i < N; i++)
+    if (s == names[i])
+      return i;
+  return {};
+}
+
+void Ecam::read_bean_(uint8_t slot) {
+  this->enqueue_({0xBA, 0xF0, slot}, 2, 500, [this, slot](const std::vector<uint8_t> *f) {
+    if (!f || f->size() < 5 + 40 + 6 + 2 || (*f)[4] != slot)
+      return;
+    Bean &b = this->beans_[slot - 1];
+    b.name = utf16be_to_utf8(f->data() + 5, 40);
+    b.grind = (*f)[45] == 13 ? 14 : (*f)[45];  // as the app: 13 reads as 7.0
+    b.temperature = (*f)[46];
+    b.aroma = (*f)[47];
+    b.used = (*f)[49] == 1;
+    this->beans_read_ |= 1 << (slot - 1);
+    if (slot == this->bean_slot_)
+      this->edit_bean(slot);
+  });
+}
+
 optional<std::string> Ecam::bean_slots_text() const {
   if (this->beans_read_ != 0x3F)
     return {};
   std::string out;
+  char buf[64];
   for (int i = 0; i < 6; i++) {
-    if (this->bean_slots_[i].empty())
+    const Bean &b = this->beans_[i];
+    if (!b.used)
       continue;
+    snprintf(buf, sizeof(buf), " (grind %.1f, %s, %s)", b.grind / 2.0f,
+             b.temperature < 4 ? BEAN_TEMPERATURES[b.temperature] : "?", b.aroma < 6 ? BEAN_AROMAS[b.aroma] : "?");
     if (!out.empty())
       out += ", ";
-    out += to_string(i + 1) + " " + this->bean_slots_[i];
+    out += to_string(i + 1) + " " + b.name + buf;
   }
   return out.empty() ? std::string("none") : out;
 }
+
+void Ecam::edit_bean(uint8_t slot) {
+  if (slot < 1 || slot > 6)
+    return;
+  this->bean_slot_ = slot;
+  this->bean_edit_ = this->beans_[slot - 1];
+  if (!this->bean_edit_.used) {  // a new bean starts from the app's defaults
+    this->bean_edit_.grind = 8;
+    this->bean_edit_.temperature = 1;
+    this->bean_edit_.aroma = 3;
+  }
+}
+
+optional<std::string> Ecam::bean_name() const {
+  if (!(this->beans_read_ & (1 << (this->bean_slot_ - 1))))
+    return {};
+  return this->bean_edit_.name;
+}
+
+optional<float> Ecam::bean_grind() const {
+  if (!(this->beans_read_ & (1 << (this->bean_slot_ - 1))))
+    return {};
+  return this->bean_edit_.grind / 2.0f;
+}
+
+optional<std::string> Ecam::bean_temperature() const {
+  if (!(this->beans_read_ & (1 << (this->bean_slot_ - 1))) || this->bean_edit_.temperature >= 4)
+    return {};
+  return std::string(BEAN_TEMPERATURES[this->bean_edit_.temperature]);
+}
+
+optional<std::string> Ecam::bean_aroma() const {
+  if (!(this->beans_read_ & (1 << (this->bean_slot_ - 1))) || this->bean_edit_.aroma >= 6)
+    return {};
+  return std::string(BEAN_AROMAS[this->bean_edit_.aroma]);
+}
+
+void Ecam::set_bean_grind(float grind) {
+  int half = (int) lroundf(grind * 2);
+  this->bean_edit_.grind = (uint8_t) std::min(14, std::max(2, half));
+}
+
+void Ecam::set_bean_temperature(const std::string &name) {
+  if (auto i = index_of(BEAN_TEMPERATURES, name))
+    this->bean_edit_.temperature = *i;
+}
+
+void Ecam::set_bean_aroma(const std::string &name) {
+  if (auto i = index_of(BEAN_AROMAS, name))
+    this->bean_edit_.aroma = *i;
+}
+
+void Ecam::write_bean_(uint8_t slot, const Bean &b) {
+  std::vector<uint8_t> p{0xBB, 0xF0, slot};
+  auto n = utf8_to_utf16be(b.name, 40);
+  p.insert(p.end(), n.begin(), n.end());
+  p.insert(p.end(), {b.grind, b.temperature, b.aroma, 0x00, (uint8_t) (b.used ? 1 : 0)});
+  std::string tx = format_hex(p);
+  this->enqueue_(std::move(p), 2, 1500, [this, slot, tx](const std::vector<uint8_t> *f) {
+    ESP_LOGI(TAG, "bean slot %u: %s -> %s", slot, tx.c_str(), f ? format_hex(*f).c_str() : "no answer");
+    this->read_bean_(slot);
+  }, true);
+}
+
+void Ecam::save_bean() {
+  Bean b = this->bean_edit_;
+  if (b.name.empty())
+    b.name = "Bean " + to_string(this->bean_slot_);
+  b.used = true;
+  this->write_bean_(this->bean_slot_, b);
+}
+
+void Ecam::delete_bean() { this->write_bean_(this->bean_slot_, Bean{}); }
 
 // Recipe TLVs: tags 01, 09, 0f carry a u16, the rest a u8.
 static bool tag16(uint8_t t) { return t == 0x01 || t == 0x09 || t == 0x0F; }
