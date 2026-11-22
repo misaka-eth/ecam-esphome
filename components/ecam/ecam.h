@@ -28,6 +28,7 @@ struct Status {
   uint8_t phase{0};
   uint8_t flags{0};
   uint8_t progress{0};
+  uint8_t result{0};  // monitor byte 10: 01 after a brew was aborted (for ~20 s)
 };
 
 class Ecam : public Component, public uart::UARTDevice {
@@ -42,6 +43,10 @@ class Ecam : public Component, public uart::UARTDevice {
   void power_on();
   void power_off();
   bool brew(int drink, int coffee_ml, int water_ml, float milk_s, int strength, int temp);
+  // Brew with the given recipe tags replacing the stored ones (none = the stored recipe as is).
+  bool brew_with(int drink, std::map<uint8_t, uint16_t> over);
+  // Brew the drink shown in the recipe editor with its unsaved edits, once; the stored recipe stays.
+  bool brew_recipe_edits();
   void stop();
   // Parameters (95 read / 90 write). Every read lands in a cache that param() returns; a write re-reads.
   void read_param(uint16_t pid, std::function<void(uint32_t)> cb = nullptr);
@@ -146,6 +151,8 @@ class Ecam : public Component, public uart::UARTDevice {
   }
 
   std::string state_text() const;
+  // What the running brew is doing ("grinding", "extraction", "milk", ...), "aborted", or empty.
+  std::string phase_text() const;
   // Beans empty: the alarm bits (an idle machine) or flags bit 4 (a brew that ran out).
   bool beans_empty() const {
     return status_valid_ && ((status_.alarms & ((1 << 5) | (1 << 15))) != 0 || (status_.flags & 0x10) != 0);

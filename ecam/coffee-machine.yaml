@@ -217,6 +217,12 @@ button:
     icon: mdi:coffee-maker-outline
     on_press:
       - lambda: 'id(machine).brew(ecam::Ecam::drink_id(std::string(id(drink).current_option())), 0, 0, 0, 0, -1);'
+  # The drink shown in the recipe editor with its unsaved changes, once; the stored recipe stays.
+  - platform: template
+    name: Brew with changes
+    icon: mdi:coffee-maker-check-outline
+    on_press:
+      - lambda: 'id(machine).brew_recipe_edits();'
 
 # Settings (PAR 50, 61-65), including the ones the app hides for this model. Bit flags are written
 # read-modify-write, so one switch never changes another setting.
@@ -692,6 +698,12 @@ text_sensor:
     icon: mdi:coffee-maker
     update_interval: 1s
     lambda: 'return id(machine).state_text();'
+  # What the running brew is doing: grinding, pre-infusion, extraction, milk, hot water, finishing, aborted.
+  - platform: template
+    name: Phase
+    icon: mdi:progress-clock
+    update_interval: 1s
+    lambda: 'return id(machine).phase_text();'
   - platform: template
     name: Alarms
     icon: mdi:alert

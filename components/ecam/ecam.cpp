@@ -187,6 +187,7 @@ void Ecam::on_frame_(const std::vector<uint8_t> &f) {
     this->status_.phase = f[10];
     this->status_.progress = f[11];
     this->status_.flags = f[12];
+    this->status_.result = f[14];
     this->status_valid_ = true;
     this->status_at_ = millis();
     for (auto &cb : this->status_cbs_)
@@ -237,6 +238,20 @@ void Ecam::power_off() {
 }
 
 bool Ecam::brew(int drink, int coffee_ml, int water_ml, float milk_s, int strength, int temp) {
+  std::map<uint8_t, uint16_t> over;
+  if (coffee_ml > 0) over[0x01] = coffee_ml;
+  if (strength > 0) over[0x02] = strength;
+  if (water_ml > 0) over[0x0F] = water_ml;
+  if (milk_s > 0) over[0x09] = int(milk_s * 10 + 0.5f);
+  if (temp >= 0 && temp <= 3) {
+    // The app pairs 0d (water temp 0..3) with 1b 01 on max and 1b 04 otherwise.
+    over[0x1B] = temp == 3 ? 0x01 : 0x04;
+    over[0x0D] = temp;
+  }
+  return this->brew_with(drink, std::move(over));
+}
+
+bool Ecam::brew_with(int drink, std::map<uint8_t, uint16_t> over) {
   if (drink <= 0 || drink > 0xFF) {
     ESP_LOGW(TAG, "brew: bad drink id %d", drink);
     return false;
@@ -249,16 +264,7 @@ bool Ecam::brew(int drink, int coffee_ml, int water_ml, float milk_s, int streng
   // stops at the milk ("clean knob", then "steamer probe", monitor byte 10 = 01) unless it carries the
   // recipe's accessory tag and leaves out froth (0b): the froth knob is mechanical and no recipe of the
   // ECAM450.76 lists it. Without any parameters the machine uses its stored recipe and that works too.
-  std::map<uint8_t, uint16_t> over;
-  if (coffee_ml > 0) over[0x01] = coffee_ml;
-  if (strength > 0) over[0x02] = strength;
-  if (water_ml > 0) over[0x0F] = water_ml;
-  if (milk_s > 0) over[0x09] = int(milk_s * 10 + 0.5f);
-  if (temp >= 0 && temp <= 3) {
-    // The app pairs 0d (water temp 0..3) with 1b 01 on max and 1b 04 otherwise.
-    over[0x1B] = temp == 3 ? 0x01 : 0x04;
-    over[0x0D] = temp;
-  }
+  over.erase(0x0B);
   if (over.empty()) {
     this->brew_send_(uint8_t(drink), {0x83, 0xF0, uint8_t(drink), 0x03, this->tail_(2)});
     return true;
@@ -290,6 +296,19 @@ bool Ecam::brew(int drink, int coffee_ml, int water_ml, float milk_s, int streng
     this->brew_send_(uint8_t(drink), std::move(p));
   }, true);
   return true;
+}
+
+bool Ecam::brew_recipe_edits() {
+  if (!this->recipe_drink_) {
+    ESP_LOGW(TAG, "brew: no recipe shown");
+    return false;
+  }
+  auto over = this->recipe_edits_;
+  // As in brew(): the app pairs a water temperature with 1b 01 on max and 1b 04 otherwise.
+  auto t = over.find(0x0D);
+  if (t != over.end())
+    over[0x1B] = t->second == 3 ? 0x01 : 0x04;
+  return this->brew_with(this->recipe_drink_, std::move(over));
 }
 
 void Ecam::brew_send_(uint8_t drink, std::vector<uint8_t> p) {
@@ -1120,6 +1139,34 @@ std::string Ecam::state_text() const {
     case 0x0C: return "milk clean";
     case 0x10: return "chocolate";
     default: return "state " + to_string(this->status_.state);
+  }
+}
+
+std::string Ecam::phase_text() const {
+  if (!this->status_valid_)
+    return "";
+  if (this->status_.result == 0x01)
+    return "aborted";
+  uint8_t p = this->status_.phase;
+  switch (this->status_.state) {
+    case 0x01:  // power-on
+      return p == 0x05 ? "rinsing" : p == 0x06 ? "finishing" : "heating";
+    case 0x07:
+      switch (p) {
+        case 0x00: return "";
+        case 0x04: case 0x05: return "grinding";
+        case 0x06: return "brew unit";
+        case 0x08: case 0x09: case 0x0A: return "pre-infusion";
+        case 0x0B: return "extraction";
+        case 0x0D: case 0x0E: return "finishing";
+        default: return "phase " + to_string(p);
+      }
+    case 0x08: return "rinsing";
+    case 0x0A:
+      return p == 0x01 ? "milk heating" : p == 0x06 ? "aborted" : p == 0x07 ? "finishing" : "milk";
+    case 0x0B:
+      return p == 0x02 ? "preparing" : p == 0x03 ? "hot water" : "finishing";
+    default: return "";
   }
 }
 
