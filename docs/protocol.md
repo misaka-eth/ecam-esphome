@@ -210,10 +210,10 @@ actions; misaka's machine reads 0 for most of them):
 | 105 | 5 | descales (presumed) |
 | 100 | 87134 | water since the last descale (presumed): grows by the sum of the flow meters PAR 400 + 401 (25 pulses/ml); unchanged by a filter change |
 | 400, 401 | +3470/+20 espresso, +1729/+14 rinse, +4660/+3800 cappuccino + milk clean | two flow meters, 401 mainly the milk/steam circuit; 402/403 grow alike (lifetime totals) |
-| 101 | +42 per espresso, 0 per rinse | unknown, per-brew amount (grinding?) |
+| 101 | + PAR 51 per brew, 0 per rinse | **grounds container fill** (confirmed: 0 after emptying the container, 2026-11-22) |
 | 505 | +1 per drink, 0 per rinse | unknown per-drink counter |
 | 57 | 278 → 279 → 276 | unknown, not a counter |
-| 51–56 | last two brews: 51/53/55 newest, 52/54/56 previous | 101 grows by PAR 51 per brew; 55 looks like brew time in ms (10500–13300); unchanged in standby |
+| 51–56 | last two brews: 51/53/55 newest, 52/54/56 previous, unchanged in standby | 55 dose setpoint by strength (espresso 40 ml: strength 1 → 6700, 5 → 11400; 2x espresso 12800); 53 the measured result, 55/53 ≈ 280 (no scale in the machine, so presumably brew-unit travel or grinder count); 51 the grounds added to 101 (strength 1 → 23, 5 → 46 for a 40 ml espresso, but 13 for a 40 ml cappuccino at 5) |
 | 502, 503 | values shift between brews | unknown |
 
 Only PAR 0, 32–35, 40–58, 61–63, 71, 100–116, 194, 199–215, 400–407 and 500–505 are non-zero below 3000;
