@@ -733,7 +733,7 @@ text_sensor:
     name: Bean slots
     icon: mdi:seed-outline
     entity_category: diagnostic
-    update_interval: 60s
+    update_interval: 10s
     lambda: 'return id(machine).bean_slots_text();'
   # Answer to the read_recipe / save_recipe actions.
   - platform: template
