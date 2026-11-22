@@ -1,4 +1,5 @@
 #include "ecam.h"
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <strings.h>
@@ -377,6 +378,19 @@ void Ecam::refresh(bool device_info) {
     // 199 EEPROM version, 200-203 production date, 205-209 serial number, 210 PIN.
     for (uint16_t pid : {199, 200, 201, 202, 203, 205, 206, 207, 208, 209, 210})
       this->read_param(pid);
+    // Bean Adapt slots: ba f0 n -> n, name 20 x UTF-16BE, 6 setting bytes (all 0: not set up).
+    for (uint8_t n = 1; n <= 6; n++) {
+      this->enqueue_({0xBA, 0xF0, n}, 2, 500, [this, n](const std::vector<uint8_t> *f) {
+        if (!f || f->size() < 5 + 40 + 6 + 2 || (*f)[4] != n)
+          return;
+        const uint8_t *set = f->data() + 45;
+        std::string &slot = this->bean_slots_[n - 1];
+        slot.clear();
+        if (std::any_of(set, set + 6, [](uint8_t b) { return b != 0; }))
+          slot = utf16be_to_utf8(f->data() + 5, 40) + " (" + format_hex(set, 6) + ")";
+        this->beans_read_ |= 1 << (n - 1);
+      });
+    }
   }
   // Active profile: answer a9 f0 .. <slot>, the last byte before the CRC.
   this->enqueue_({0xA9, 0xF0}, 2, 500, [this](const std::vector<uint8_t> *f) {
@@ -551,6 +565,20 @@ optional<std::string> Ecam::custom_drinks_text() const {
     if (!out.empty())
       out += ", ";
     out += to_string(i + 1) + " " + this->custom_names_[i];
+  }
+  return out.empty() ? std::string("none") : out;
+}
+
+optional<std::string> Ecam::bean_slots_text() const {
+  if (this->beans_read_ != 0x3F)
+    return {};
+  std::string out;
+  for (int i = 0; i < 6; i++) {
+    if (this->bean_slots_[i].empty())
+      continue;
+    if (!out.empty())
+      out += ", ";
+    out += to_string(i + 1) + " " + this->bean_slots_[i];
   }
   return out.empty() ? std::string("none") : out;
 }

@@ -72,6 +72,8 @@ class Ecam : public Component, public uart::UARTDevice {
   void set_favorites(const std::string &drinks);
   optional<std::string> custom_drinks_text() const;
   void delete_custom_drink(uint8_t slot);
+  // Bean Adapt slots 1..6 that are set up: "1 <name> (<6 setting bytes>)", read with the device info.
+  optional<std::string> bean_slots_text() const;
 
   // Stored recipes (A6 read, 83 .. 00 .. 05 save). The text is "<profile> <drink>: tag value, ...".
   void read_recipe(int drink, int profile);
@@ -183,6 +185,8 @@ class Ecam : public Component, public uart::UARTDevice {
   bool favorites_valid_{false};
   std::array<std::string, 6> custom_names_;
   bool customs_valid_{false};
+  std::array<std::string, 6> bean_slots_;  // empty: slot not set up
+  uint8_t beans_read_{0};                  // bit per slot answered
   std::string recipe_text_;
   uint8_t recipe_drink_{0};
   uint8_t recipe_profile_{0};
