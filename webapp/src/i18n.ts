@@ -13,6 +13,12 @@ const de: Record<string, string> = {
   'Grounds container removed': 'Satzbehälter entnommen', 'Grounds container full': 'Satzbehälter voll',
   'Descale needed': 'Entkalken nötig', 'Beans empty': 'Bohnen leer', 'Drip tray': 'Abtropfschale prüfen',
   Ready: 'Bereit', Brewing: 'Bereitet zu', 'Last brew': 'Letzter Bezug',
+  'Adjust this time': 'Diesmal anpassen', 'Brew with changes': 'Angepasst zubereiten',
+  'Only for this cup; the stored recipe stays.': 'Nur für diese Tasse; das gespeicherte Rezept bleibt.',
+  'Brew aborted': 'Bezug abgebrochen',
+  // phases
+  grinding: 'Mahlen', 'brew unit': 'Brühgruppe', 'pre-infusion': 'Vorbrühen', extraction: 'Extraktion',
+  finishing: 'Abschluss', 'milk heating': 'Milch vorbereiten', preparing: 'Vorbereiten', aborted: 'Abgebrochen',
   // states
   ready: 'bereit', standby: 'Standby', brewing: 'bereitet zu', heating: 'heizt auf', rinsing: 'spült',
   'turning on': 'schaltet ein', 'turning off': 'schaltet aus', 'milk clean': 'Milchreinigung',

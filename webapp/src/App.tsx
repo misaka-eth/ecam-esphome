@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { call, num, on, str, useEntity, useStore } from './esp';
 import { drink, t } from './i18n';
 import {
-  Button, Card, Dropdown, Icon, NumberRow, Pill, Press, Row, Segmented, SelectRow, SwitchRow, TextRow, Value,
+  Button, Card, Dropdown, Icon, NumberRow, Pill, Press, Row, Segmented, SelectRow, SwitchRow, TextRow, Toggle, Value,
 } from './ui';
 
 const TABS = [
@@ -96,7 +96,8 @@ function BrewTab() {
   const brewing = on(entities['binary_sensor/Brewing']);
   const progress = num(entities['sensor/Progress']);
   const alarms = (str(entities['text_sensor/Alarms']) ?? '').split(', ').filter((a) => a && a !== 'none');
-  const drinkSel = entities['select/Drink'];
+  const phase = str(entities['text_sensor/Phase']) ?? '';
+  const [custom, setCustom] = useState(false);
   const problems = PROBLEMS.filter((p) => on(entities[`binary_sensor/${p}`]));
   const favourites = (str(entities['text_sensor/Favourites']) ?? '').split(', ').filter((f) => f && f !== 'none');
   const off = state === 'standby' || state === 'offline';
@@ -118,10 +119,17 @@ function BrewTab() {
             <Press name="Stop" variant="danger" icon="stop" />
           </div>
         </div>
+        {phase === 'aborted' && !brewing && (
+          <div className="mt-4">
+            <Pill tone="red">
+              <Icon name="alert" className="h-3.5 w-3.5" /> {t('Brew aborted')}
+            </Pill>
+          </div>
+        )}
         {brewing && (
           <div className="mt-5">
             <div className="mb-2 flex justify-between text-sm text-ink-muted">
-              <span>{t('Progress')}</span>
+              <span>{phase ? t(phase) : t('Progress')}</span>
               <span className="font-mono">{progress ?? 0} %</span>
             </div>
             <div className="h-2.5 overflow-hidden rounded-full bg-navy-700">
@@ -153,16 +161,24 @@ function BrewTab() {
 
       <Grid>
         <Card title={t('Drink')} icon="cup">
-          {drinkSel?.option && (
-            <Dropdown
-              className="w-full text-base"
-              options={drinkSel.option}
-              value={str(drinkSel)}
-              label={drink}
-              onChange={(o) => call('select', 'Drink', 'set', { option: o })}
-            />
+          <DrinkDropdown className="w-full text-base" />
+          <div className="mt-3">
+            <Row label={t('Adjust this time')}>
+              <Toggle checked={custom} onChange={setCustom} />
+            </Row>
+          </div>
+          {custom ? (
+            <>
+              <RecipeFields compact />
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Press name="Brew with changes" variant="crema" icon="play" className="flex-1 text-base" disabled={brewing || off} />
+                <Press name="Reload recipe" icon="undo" />
+              </div>
+              <div className="mt-2 text-xs text-ink-dim">{t('Only for this cup; the stored recipe stays.')}</div>
+            </>
+          ) : (
+            <Press name="Brew drink" variant="crema" icon="play" className="mt-4 w-full text-base" disabled={brewing || off} />
           )}
-          <Press name="Brew drink" variant="crema" icon="play" className="mt-4 w-full text-base" disabled={brewing || off} />
           <div className="mt-6 text-xs uppercase tracking-wider text-ink-dim">{t('Quick drinks')}</div>
           <div className="mt-2 flex flex-wrap gap-2">
             <Press name="Espresso" disabled={brewing || off} />
@@ -222,9 +238,9 @@ const LIMIT_TAG: Record<string, [string, number]> = {
   'Recipe intensity': ['intensity', 1],
 };
 
-function RecipesTab() {
+// compact: one column for the brew card, without froth (a mechanical knob on this machine; not sent).
+function RecipeFields({ compact = false }: { compact?: boolean }) {
   const { entities } = useStore();
-  const drinkSel = entities['select/Drink'];
   const limitsText = str(entities['text_sensor/Recipe limits']) ?? '';
   const limits = useMemo(() => {
     const m: Record<string, [number, number]> = {};
@@ -241,6 +257,40 @@ function RecipesTab() {
   };
   const hasStrength = str(entities['select/Recipe strength']) !== undefined;
   const hasTemp = str(entities['select/Recipe water temperature']) !== undefined;
+  return (
+    <>
+      <div className={`mt-5 grid gap-x-10 ${compact ? '' : 'md:grid-cols-2'}`}>
+        {Object.keys(LIMIT_TAG).filter((n) => !(compact && n === 'Recipe froth')).map((n) => (
+          <NumberRow key={n} name={n} hideUnknown {...range(n)} format={n === 'Recipe milk' ? (v) => v.toFixed(1) : undefined} />
+        ))}
+      </div>
+      {(hasStrength || hasTemp) && (
+        <div className={`mt-2 grid gap-x-10 ${compact ? '' : 'md:grid-cols-2'}`}>
+          {hasStrength && <SelectRow name="Recipe strength" segmented />}
+          {hasTemp && <SelectRow name="Recipe water temperature" segmented />}
+        </div>
+      )}
+    </>
+  );
+}
+
+function DrinkDropdown({ className }: { className: string }) {
+  const drinkSel = useEntity('select', 'Drink');
+  if (!drinkSel?.option) return null;
+  return (
+    <Dropdown
+      className={className}
+      options={drinkSel.option}
+      value={str(drinkSel)}
+      label={drink}
+      onChange={(o) => call('select', 'Drink', 'set', { option: o })}
+    />
+  );
+}
+
+function RecipesTab() {
+  const { entities } = useStore();
+  const limitsText = str(entities['text_sensor/Recipe limits']) ?? '';
   const profile = str(entities['select/Active profile']);
   const profileName = profile ? str(entities[`text/Profile ${profile} name`]) : undefined;
 
@@ -248,28 +298,10 @@ function RecipesTab() {
     <Grid>
       <Card title={t('Recipe')} icon="recipe" className="lg:col-span-2">
         <div className="flex flex-wrap items-center gap-3">
-          {drinkSel?.option && (
-            <Dropdown
-              className="min-w-[220px] flex-1 text-base"
-              options={drinkSel.option}
-              value={str(drinkSel)}
-              label={drink}
-              onChange={(o) => call('select', 'Drink', 'set', { option: o })}
-            />
-          )}
+          <DrinkDropdown className="min-w-[220px] flex-1 text-base" />
           {profileName && <Pill>{profileName}</Pill>}
         </div>
-        <div className="mt-5 grid gap-x-10 md:grid-cols-2">
-          {Object.keys(LIMIT_TAG).map((n) => (
-            <NumberRow key={n} name={n} hideUnknown {...range(n)} format={n === 'Recipe milk' ? (v) => v.toFixed(1) : undefined} />
-          ))}
-        </div>
-        {(hasStrength || hasTemp) && (
-          <div className="mt-2 grid gap-x-10 md:grid-cols-2">
-            {hasStrength && <SelectRow name="Recipe strength" segmented />}
-            {hasTemp && <SelectRow name="Recipe water temperature" segmented />}
-          </div>
-        )}
+        <RecipeFields />
         <div className="mt-6 flex flex-wrap items-center gap-3">
           <Press name="Save recipe" variant="primary" icon="save" />
           <Press name="Reload recipe" icon="undo" />
