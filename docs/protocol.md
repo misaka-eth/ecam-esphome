@@ -36,8 +36,8 @@ answer   D0 LEN payload CRC16
 | `90 0F <pid u16> <u32>` | write parameter | `90 0F <pid> 00` |
 | `A1 0F <pid u16> <n>` | read n parameters from pid | values only |
 | `A2 0F <start u16> <n>` | statistics: next n counters with id ≥ start | n × (`id u16`, `u32`) |
-| `A4 F0 <slot> <slot>` / `A5 F0 <slot> <icon> <name UTF-16BE 20 B> <mug>` | read / write profile | |
-| `A9 F0 <slot>` | select active profile (read: `A9 F0`, last byte) | |
+| `A4 F0 <first> <count>` / `A5 F0 <first> <last> (<name UTF-16BE 20 B> <icon> <mug>)…` | read / write profiles | the machine answers `A4 F0 01 04` but not a read of one profile (`A4 F0 04 01`); A5 answers `00` ok, `01` rejected (an icon of `FF`, as unset profiles read, is rejected) |
+| `A9 F0 <slot>` | select active profile (read: `A9 F0`, last byte) | in standby the machine acknowledges it but keeps the old profile |
 | `A6 F0 <profile> <bev>` | read stored recipe | TLV |
 | `AA F0 <slot> <n>` / `AB F0 <slot> 01 <name UTF-16BE 20 B> <image>` | read / write custom drink name | |
 | `AC F0 <profile>` / `AD F0 <profile> <11 bev ids>` | read / write favourites (first = newest, `00` = empty) | write ACK `00 01` |

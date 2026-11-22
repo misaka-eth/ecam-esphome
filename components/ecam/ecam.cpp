@@ -461,17 +461,20 @@ optional<std::string> Ecam::profile_name(uint8_t slot) const {
 void Ecam::rename_profile(uint8_t slot, const std::string &name) {
   if (slot < 1 || slot > 4)
     return;
-  // The write keeps the mug byte: read the profile first (a4 f0 <slot> 01 -> ... <mug> crc16).
-  this->enqueue_({0xA4, 0xF0, slot, 0x01}, 2, 500, [this, slot, name](const std::vector<uint8_t> *f) {
-    if (!f || f->size() < 8) {
+  // a5 f0 <slot> <slot> <name 20 B> <icon> <mug> keeps icon and mug: read the profiles first (a4 f0 01 04 ->
+  // 4 x (name 20 B, icon, mug) from byte 6; the machine does not answer a read of a single profile).
+  this->enqueue_({0xA4, 0xF0, 0x01, 0x04}, 2, 500, [this, slot, name](const std::vector<uint8_t> *f) {
+    if (!f || f->size() < 6 + 4 * 22 + 2) {
       ESP_LOGW(TAG, "rename profile %u: read failed, nothing written", slot);
       return;
     }
-    uint8_t mug = (*f)[f->size() - 3];
+    const uint8_t *entry = f->data() + 6 + (slot - 1) * 22;
+    // An unset icon reads ff, but the machine rejects ff in a write (answer 01); it stores 1 as 2.
+    uint8_t icon = entry[20] == 0xFF ? 0x02 : entry[20], mug = entry[21];
     std::vector<uint8_t> p{0xA5, 0xF0, slot, slot};
     auto n = utf8_to_utf16be(name, 20);
     p.insert(p.end(), n.begin(), n.end());
-    p.push_back(0x01);
+    p.push_back(icon);
     p.push_back(mug);
     this->enqueue_(std::move(p), 2, 800, [this, slot](const std::vector<uint8_t> *f) {
       ESP_LOGI(TAG, "rename profile %u: %s", slot, f ? ((*f)[4] == 0 ? "ok" : "rejected") : "no answer");
