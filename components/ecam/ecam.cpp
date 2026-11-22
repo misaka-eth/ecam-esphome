@@ -409,7 +409,36 @@ void Ecam::refresh(bool device_info) {
     this->customs_valid_ = true;
   });
   this->read_stats_(0, 0);
+#ifdef USE_SENSOR
+  this->read_counters_();
+#endif
 }
+
+#ifdef USE_SENSOR
+// The counter sensors read the live parameters: 95 0f <id u16> <n> answers n consecutive u32 values from
+// byte 6 (up to 48 tried). A2 only catches up when the machine goes to standby.
+void Ecam::read_counters_() {
+  static const uint16_t BLOCK = 48;
+  std::sort(this->counters_.begin(), this->counters_.end(),
+            [](const auto &a, const auto &b) { return a.first < b.first; });
+  for (size_t i = 0; i < this->counters_.size();) {
+    uint16_t first = this->counters_[i].first;
+    size_t end = i;
+    while (end < this->counters_.size() && this->counters_[end].first < first + BLOCK)
+      end++;
+    uint16_t n = this->counters_[end - 1].first - first + 1;
+    this->enqueue_({0x95, 0x0F, uint8_t(first >> 8), uint8_t(first & 0xFF), uint8_t(n)}, 2, 500,
+                   [this, i, end, first, n](const std::vector<uint8_t> *f) {
+                     if (!f || f->size() < 6u + 4u * n + 2u)
+                       return;
+                     for (size_t k = i; k < end; k++)
+                       this->counters_[k].second->publish_state(
+                           float(be32(f->data() + 6 + 4 * (this->counters_[k].first - first))));
+                   });
+    i = end;
+  }
+}
+#endif
 
 // a2 0f <start u16> 0a -> up to 10 x (id u16, value u32) from byte 4, ids >= start.
 void Ecam::read_stats_(uint16_t start, int pages) {
@@ -429,13 +458,6 @@ void Ecam::read_stats_(uint16_t start, int pages) {
                      return;
                    }
                    ESP_LOGD(TAG, "statistics: %u counters", (unsigned) this->stats_.size());
-#ifdef USE_SENSOR
-                   for (auto &c : this->counters_) {
-                     auto it = this->stats_.find(c.first);
-                     // A counter the machine does not list has never been used.
-                     c.second->publish_state(it == this->stats_.end() ? 0.0f : float(it->second));
-                   }
-#endif
                  });
 }
 

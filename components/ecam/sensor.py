@@ -10,7 +10,7 @@ DEPENDENCIES = ["ecam"]
 CONF_ECAM_ID = "ecam_id"
 CONF_COUNTER = "counter"
 
-# A statistics counter (A2 0f): 3000-3003 categories, 3003 + drink id per drink (docs/protocol.md).
+# A statistics counter (read live as PAR 95 0f): 3000-3003 categories, 3003 + drink id per drink (docs/protocol.md).
 CONFIG_SCHEMA = sensor.sensor_schema(
     icon="mdi:counter",
     accuracy_decimals=0,

@@ -841,9 +841,8 @@ sensor:
     state_class: total_increasing
     accuracy_decimals: 2
     update_interval: never
-  # Statistics counters (A2 0f, read every minute): 3000-3003 per category, 3003 + drink id per drink
+  # Statistics counters (live PAR reads every minute; A2 lags until standby): 3000-3003 per category, 3003 + drink id per drink
   # (drinks of the ECAM450.76.T as listed in the app).
-  # A drink the machine has never made reads 0.
   - {platform: ecam, id: coffees, name: Coffees, counter: 3000}
   - {platform: ecam, name: Milk coffees, counter: 3001}
   - {platform: ecam, name: Water drinks, counter: 3002}

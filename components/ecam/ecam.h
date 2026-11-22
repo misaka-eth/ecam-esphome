@@ -55,7 +55,7 @@ class Ecam : public Component, public uart::UARTDevice {
   // statistics; with device_info also serial number, production date, EEPROM version and PIN.
   void refresh(bool device_info);
 
-  // Statistics (A2 0f): all counters by id, published to the ecam counter sensors.
+  // Statistics (A2 0f): all counters by id, as of the last standby (the sensors read them live).
   optional<uint32_t> stat(uint16_t id) const;
 #ifdef USE_SENSOR
   void add_counter(uint16_t id, sensor::Sensor *s) { this->counters_.push_back({id, s}); }
@@ -188,6 +188,9 @@ class Ecam : public Component, public uart::UARTDevice {
   std::vector<std::function<void()>> status_cbs_;
 
   void read_stats_(uint16_t start, int pages);
+#ifdef USE_SENSOR
+  void read_counters_();
+#endif
   void read_favorites_();
   void save_recipe_(uint8_t drink, std::map<uint8_t, uint16_t> changes);
   std::map<uint16_t, uint32_t> params_;

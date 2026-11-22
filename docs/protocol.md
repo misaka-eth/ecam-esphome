@@ -32,7 +32,7 @@ answer   D0 LEN payload CRC16
 | `84 0F 01 01` | standby | |
 | `84 0F 03 02` | sent by the app when it opens; not needed | |
 | `83 F0 <bev> <op> <TLV...> <tail>` | recipe save / brew / stop, see below | `83 F0 01 00` accepted |
-| `95 0F <pid u16> 01` | read parameter | `95 0F <pid> <u32>` |
+| `95 0F <pid u16> <n>` | read n consecutive parameters (n up to 48 tried) | `95 0F <pid> <u32> × n` |
 | `90 0F <pid u16> <u32>` | write parameter | `90 0F <pid> 00` |
 | `A1 0F <pid u16> <n>` | read n parameters from pid | values only |
 | `A2 0F <start u16> <n>` | statistics: next n counters with id ≥ start | n × (`id u16`, `u32`) |
@@ -205,7 +205,8 @@ every id answers. Statistics (`A2`) also list blocks 23000–23009 (23004/23007/
 values (100, 106, 109, 400–403).
 
 The `A2` statistics lag: the machine writes them when it goes to standby, so drinks made since the last
-power-on are missing until then (101 and 109 included). A 2x espresso from the display counts as two
+power-on are missing until then (101 and 109 included). Reading the same ids as parameters
+(`95 0F 0B B8 30` = 3000–3047) gives the same values; the counter sensors use that. A 2x espresso from the display counts as two
 espressos (3000, 3004 and 3005 +2, 3007 unchanged; 23001/23002 +8, 23004/23007/23008 +178, 43011 +2,
 43012/43016 +1).
 
