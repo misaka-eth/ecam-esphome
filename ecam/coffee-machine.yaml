@@ -826,8 +826,9 @@ text_sensor:
     update_interval: 1s
     lambda: |-
       if (!id(machine).has_status()) return {"unknown"};
+      // Names from the app (enum m6.p); bit 8 is the milk carafe ("IFD caraffe").
       static const char *names[16] = {"spout", "brew unit up", "brew unit down", "grounds container out",
-          "tank out", "knob", "water low", "b7", "jug", "chocolate tank", "clean knob", "b11", "b12",
+          "tank out", "knob", "water low", "coffee jug", "jug", "chocolate tank", "clean knob", "b11", "b12",
           "door open", "preground door open", "b15"};
       uint16_t sw = id(machine).status().switches;
       std::string out;

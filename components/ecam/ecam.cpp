@@ -182,11 +182,10 @@ void Ecam::on_frame_(const std::vector<uint8_t> &f) {
   if (f[2] == 0x75 && f[1] == 0x12) {
     this->status_.accessory = f[4];
     this->status_.switches = f[5] | (uint16_t(f[6]) << 8);
-    this->status_.alarms = f[7] | (uint16_t(f[8]) << 8);
+    this->status_.alarms = f[7] | (uint32_t(f[8]) << 8) | (uint32_t(f[12]) << 16) | (uint32_t(f[13]) << 24);
     this->status_.state = f[9];
     this->status_.phase = f[10];
     this->status_.progress = f[11];
-    this->status_.flags = f[12];
     this->status_.result = f[14];
     this->status_valid_ = true;
     this->status_at_ = millis();
@@ -1182,23 +1181,32 @@ std::string Ecam::accessory_text() const {
 }
 
 std::string Ecam::alarms_text() const {
-  static const char *const NAMES[16] = {
-      "tank empty",     "grounds full",       "descale",       "replace filter",
-      "grind too fine", "beans empty",        "service",       "heater probe",
-      "too much coffee", "brew unit motor",   "steamer probe", "empty drip tray",
-      "hydraulic problem", "insert tank",     "clean knob",    "beans empty"};
+  // Names from the app (enum m6.l). Bit 16 ("tank too full") is set in normal operation and the app
+  // ignores it, as it does 7, 10, 13, 20 and 21; they are listed here anyway except 16.
+  static const char *const NAMES[28] = {
+      "tank empty",        "grounds full",       "descale",          "replace filter",
+      "grind too fine",    "beans empty",        "service",          "heater probe",
+      "too much coffee",   "brew unit motor",    "steamer probe",    "empty drip tray",
+      "hydraulic problem", "insert tank",        "clean knob",       "beans empty",
+      nullptr,             "bean hopper absent", "grid presence",    "infuser sense",
+      "beans empty",       "expansion comm",     "expansion modules", "grinder 1",
+      "grinder 2",         "condenser fan",      "clock comm",       "SPI comm"};
   if (!this->status_valid_)
     return "";
   std::string out;
-  for (int i = 0; i < 16; i++) {
-    if (this->status_.alarms & (1 << i)) {
-      if (!out.empty())
-        out += ", ";
-      out += NAMES[i];
-    }
+  for (int i = 0; i < 32; i++) {
+    if (!(this->status_.alarms & (1u << i)))
+      continue;
+    const char *n = i < 28 ? NAMES[i] : "";
+    if (n == nullptr)
+      continue;
+    std::string name = *n ? std::string(n) : "alarm " + to_string(i);
+    if (out.find(name) != std::string::npos)
+      continue;
+    if (!out.empty())
+      out += ", ";
+    out += name;
   }
-  if ((this->status_.flags & 0x10) && (this->status_.alarms & ((1 << 5) | (1 << 15))) == 0)
-    out += out.empty() ? "beans empty" : ", beans empty";
   return out.empty() ? "none" : out;
 }
 

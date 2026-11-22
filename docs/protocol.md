@@ -87,8 +87,9 @@ Deleting a profile is a rename to an all-zero name. Deleting a custom drink: `83
 | 5 | state: 00 standby, 01 heating, 02 turning off, 04 descaling, 07 ready / brewing, 08 rinsing, 0A milk, 0B hot water, 0C milk clean |
 | 6 | phase within the state (coffee brews inside state 07 with a non-zero phase) |
 | 7 | progress, 0–100 % |
-| 8 | flags: bit 0 set in normal operation; **bit 4 set while a brew waits for beans** (confirmed: the hopper ran out mid-brew, alarms stayed 0, state 07 phase 10 progress 0; cleared when beans were added) |
-| 9–12 | not decoded; stayed 00 through power-on, rinse, an espresso and hot water |
+| 8–9 | **alarms bits 16–31** (the app reads the alarms as bytes 3, 4, 8, 9; see below) |
+| 10 | 01 for ~20 s after a brew was aborted (e.g. a milk drink stopping at the milk), else 00 |
+| 11–12 | not decoded, always 00 so far |
 
 Phases seen (byte 6, one sample per second): power-on in state 01 runs 01 → 02 → 05 (rinse, progress
 0 → 100 in ~20 s) → 06; an espresso in state 07 runs 04 → 05 → 06 (grinding, switches bits 1/2 brew-unit motor)
@@ -99,8 +100,15 @@ water_ml 80 instead of the stored 150 poured about 90 ml (PAR 106), so the brew 
 
 Switches (physical sensors; the display's "insert …" prompts come from here, not from alarms):
 bit 0 spout, 1 brew-unit motor up, 2 brew-unit motor down, **3 grounds container out**, **4 water tank
-out**, 5 knob, 6 water low, 7 unknown (set in normal operation), 8 jug, 10 clean knob, 13 door open,
+out**, 5 knob, 6 water low, 7 coffee jug (app name; set in normal operation here), 8 milk carafe, 10 clean knob, 13 door open,
 14 pre-ground door open. Bits 3 and 4 are confirmed on this machine.
+
+Alarm names are the app's (enum `m6.l`, MonitorDataV2 builds a u32 from bytes 3, 4, 8, 9). The app hides
+bits 7, 10, 13, 16, 20 and 21. Bit 16 ("tank too full") is set in normal operation; bit 20 ("not enough
+coffee") is set while a brew waits for beans (seen: hopper ran out mid-brew, phase 10, progress 0). Bits 16+:
+16 tank too full, 17 bean hopper absent, 18 grid presence, 19 infuser sense, 20 not enough coffee,
+21 expansion comm, 22 expansion submodules, 23 grinder 1, 24 grinder 2, 25 condenser fan, 26 clock/BT comm,
+27 SPI comm.
 
 Alarms: bit 0 water tank empty, **1 grounds container full** (confirmed), 2 descale, 3 replace filter,
 4 grind too fine, **5 beans empty** (confirmed), 6 service, 7 heater probe, 8 too much coffee,
