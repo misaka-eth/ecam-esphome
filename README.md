@@ -25,7 +25,7 @@ Copy `example.yaml` into the ESPHome dashboard as your device file and add the k
 
 - State, progress, alarms, door/container switches, water total and milk cleans.
 - Statistics: a counter per drink category and per drink (`A2` counters; unused drinks read 0).
-- Power/standby/stop buttons, a `Drink` select with a `Brew drink` button, a `brew` API action and
+- Power/standby/stop buttons, a `Restart` button for the ESP, a `Drink` select with a `Brew drink` button, a `brew` API action and
   the machine's answer to the last brew (`Last brew`: accepted, or rejected with the answer's bytes).
 - Settings, including the ones the app hides for some models: coffee temperature, auto-off, water
   hardness, autostart (on/off, hour, minute), 12-hour clock, key beep, cup light, energy saving, water filter.

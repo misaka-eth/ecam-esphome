@@ -156,6 +156,9 @@ ecam:
   wifi_icon: auto        # real wifi / HA state on the machine display; or a fixed 0x30..0x36
 
 button:
+  - platform: restart
+    name: Restart
+    entity_category: config
   - platform: template
     name: Power on
     icon: mdi:power
