@@ -88,7 +88,12 @@ Deleting a profile is a rename to an all-zero name. Deleting a custom drink: `83
 | 6 | phase within the state (coffee brews inside state 07 with a non-zero phase) |
 | 7 | progress, 0–100 % |
 | 8 | flags: bit 0 set in normal operation; **bit 4 set while a brew waits for beans** (confirmed: the hopper ran out mid-brew, alarms stayed 0, state 07 phase 10 progress 0; cleared when beans were added) |
-| 9–12 | not decoded |
+| 9–12 | not decoded; stayed 00 through power-on, rinse and an espresso |
+
+Phases seen (byte 6, one sample per second): power-on in state 01 runs 01 → 02 → 05 (rinse, progress
+0 → 100 in ~20 s) → 06; an espresso in state 07 runs 04 → 05 → 06 (grinding, switches bits 1/2 brew-unit motor)
+→ 08 → 09 → 0A → 0B (extraction, progress 5 → 100 in ~15 s) → 0D → 0E → 00. The live counters (PAR 3000+)
+went up at 0E, before the machine was ready again.
 
 Switches (physical sensors; the display's "insert …" prompts come from here, not from alarms):
 bit 0 spout, 1 brew-unit motor up, 2 brew-unit motor down, **3 grounds container out**, **4 water tank
@@ -206,7 +211,8 @@ values (100, 106, 109, 400–403).
 
 The `A2` statistics lag: the machine writes them when it goes to standby, so drinks made since the last
 power-on are missing until then (101 and 109 included). Reading the same ids as parameters
-(`95 0F 0B B8 30` = 3000–3047) gives the same values; the counter sensors use that. A 2x espresso from the display counts as two
+(`95 0F 0B B8 30` = 3000–3047) gives the same values, but live (confirmed: 3000/3004/3005 +1 at the end of an espresso);
+the counter sensors use that. A 2x espresso from the display counts as two
 espressos (3000, 3004 and 3005 +2, 3007 unchanged; 23001/23002 +8, 23004/23007/23008 +178, 43011 +2,
 43012/43016 +1).
 
