@@ -196,12 +196,18 @@ actions; misaka's machine reads 0 for most of them):
 | 101 | +42 per espresso, 0 per rinse | unknown, per-brew amount (grinding?) |
 | 505 | +1 per drink, 0 per rinse | unknown per-drink counter |
 | 57 | 278 → 279 → 276 | unknown, not a counter |
-| 51–56, 502, 503 | values shift between brews | looks like a buffer of the last brews |
+| 51–56 | last two brews: 51/53/55 newest, 52/54/56 previous | 101 grows by PAR 51 per brew; 55 looks like brew time in ms (10500–13300); unchanged in standby |
+| 502, 503 | values shift between brews | unknown |
 
 Only PAR 0, 32–35, 40–58, 61–63, 71, 100–116, 194, 199–215, 400–407 and 500–505 are non-zero below 3000;
 every id answers. Statistics (`A2`) also list blocks 23000–23009 (23004/23007/23008 +127 per espresso,
 23001 +5, 23005 +125, 23006 +218 for a cappuccino with milk clean, 0 per rinse) and 43000–43016 (43005, 43010 +1 per drink). A power-on rinse changes only the water
 values (100, 106, 109, 400–403).
+
+The `A2` statistics lag: the machine writes them when it goes to standby, so drinks made since the last
+power-on are missing until then (101 and 109 included). A 2x espresso from the display counts as two
+espressos (3000, 3004 and 3005 +2, 3007 unchanged; 23001/23002 +8, 23004/23007/23008 +178, 43011 +2,
+43012/43016 +1).
 
 PAR 205–209 hold the serial number as 4 ASCII bytes each (big-endian, NUL/space padded). PAR 200–203 read
 `523 10 3 22` on a machine built in autumn 2022: 201–203 look like month / day / year (2022-10-03),
