@@ -12,6 +12,8 @@ packages:
     ref: ${ecam_ref}
     refresh: ${ecam_refresh}
     files: [ecam/coffee-machine.yaml]
+    # With the web UI at http://<device>/ (no login):
+    # files: [ecam/coffee-machine.yaml, ecam/web-ui.yaml]
 
 # Local overrides merge into the package, e.g.:
 # wifi:

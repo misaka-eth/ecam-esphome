@@ -48,6 +48,21 @@ Copy `example.yaml` into the ESPHome dashboard as your device file and add the k
 A setting the machine does not have is ignored or reads back unchanged. `select_bean_adapt` follows the
 app's frame but is not confirmed on a machine yet.
 
+## Web UI (optional)
+
+`ecam/web-ui.yaml` adds a web UI on the device itself at `http://<device>/`: brew, recipes, Bean Adapt slots,
+settings, profiles, statistics and maintenance, live, in German or English after the browser language. It
+works without Home Assistant. Add it to the package files (see `example.yaml`):
+
+```yaml
+    files: [ecam/coffee-machine.yaml, ecam/web-ui.yaml]
+```
+
+It has no login, so anyone on the network can use the machine. The UI is a React app in `webapp/`.
+`npm run build` there writes `components/ecam_web/ecam.js`, which the `ecam_web` component serves gzipped
+from flash. ESPHome's `web_server` page loads it (`js_url: /ecam.js`), and the UI uses web_server's `/events`
+stream and REST API. `ESP=http://<device> npm run dev` runs it locally against a device.
+
 ## Reverse-engineering notes
 
 - [docs/hardware.md](docs/hardware.md): boards, pinout, why the stock module is not reflashable, photos

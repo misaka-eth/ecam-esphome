@@ -1,0 +1,22 @@
+# Optional web UI on the device itself: http://<device>/ (the React app in webapp/, built to
+# components/ecam_web/ecam.js). Add it to the package files in the site file (see example.yaml):
+#
+#     files: [ecam/coffee-machine.yaml, ecam/web-ui.yaml]
+#
+# No login: anyone on the network can use the machine through it (add web_server auth to change that).
+external_components:
+  - source:
+      type: git
+      url: ${ecam_repo}
+      ref: ${ecam_ref}
+    components: [ecam_web]
+    refresh: ${ecam_refresh}
+
+web_server:
+  port: 80
+  version: 3
+  # web_server's page loads the UI from ecam_web instead of the stock frontend.
+  js_url: /ecam.js
+  css_url: ""
+
+ecam_web: {}
