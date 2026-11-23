@@ -19,6 +19,7 @@ const de: Record<string, string> = {
   // phases
   grinding: 'Mahlen', 'brew unit': 'Brühgruppe', 'pre-infusion': 'Vorbrühen', extraction: 'Extraktion',
   finishing: 'Abschluss', 'milk heating': 'Milch vorbereiten', preparing: 'Vorbereiten', aborted: 'Abgebrochen',
+  'waiting for beans': 'Wartet auf Bohnen',
   // states
   ready: 'bereit', standby: 'Standby', brewing: 'bereitet zu', heating: 'heizt auf', rinsing: 'spült',
   'turning on': 'schaltet ein', 'turning off': 'schaltet aus', 'milk clean': 'Milchreinigung',
