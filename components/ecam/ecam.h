@@ -3,25 +3,31 @@
 #include <array>
 #include <deque>
 #include <functional>
+#include <map>
 #include <string>
 #include <vector>
 
 #include "esphome/core/component.h"
+#include "esphome/core/defines.h"
+#include "esphome/core/optional.h"
 #include "esphome/components/uart/uart.h"
+#ifdef USE_SENSOR
+#include "esphome/components/sensor/sensor.h"
+#endif
 
 namespace esphome {
 namespace ecam {
 
-// Protocol: docs/protocol.md. Monitor answer (75 0f): [0] accessory, [1..2] switches LE, [3..4] alarms LE,
-// [5] state, [6] phase, [7] progress %, [8] flags (bit 4: a brew waits for beans), [9..12] unknown.
+// Protocol: docs/protocol.md. Monitor answer (75 0f): [0] accessory, [1..2] switches LE, [3..4] alarms bits 0-15,
+// [5] state, [6] phase, [7] progress %, [8..9] alarms bits 16-31 (as the app reads them), [10] 01 = aborted.
 struct Status {
   uint8_t accessory{0};
   uint16_t switches{0};
-  uint16_t alarms{0};
+  uint32_t alarms{0};
   uint8_t state{0};
   uint8_t phase{0};
-  uint8_t flags{0};
   uint8_t progress{0};
+  uint8_t result{0};  // monitor byte 10: 01 after a brew was aborted (for ~20 s)
 };
 
 class Ecam : public Component, public uart::UARTDevice {
@@ -36,8 +42,94 @@ class Ecam : public Component, public uart::UARTDevice {
   void power_on();
   void power_off();
   bool brew(int drink, int coffee_ml, int water_ml, float milk_s, int strength, int temp);
+  // Brew with the given recipe tags replacing the stored ones (none = the stored recipe as is).
+  bool brew_with(int drink, std::map<uint8_t, uint16_t> over);
+  // Brew the drink shown in the recipe editor with its unsaved edits, once; the stored recipe stays.
+  bool brew_recipe_edits();
   void stop();
-  void read_param(uint16_t pid, std::function<void(uint32_t)> cb);
+  // Parameters (95 read / 90 write). Every read lands in a cache that param() returns; a write re-reads.
+  void read_param(uint16_t pid, std::function<void(uint32_t)> cb = nullptr);
+  void write_param(uint16_t pid, uint32_t value);
+  // Read-modify-write of flag bits (PAR 63); never writes when the read fails.
+  void write_param_bits(uint16_t pid, uint32_t mask, bool on);
+  optional<uint32_t> param(uint16_t pid) const;
+  optional<bool> param_bit(uint16_t pid, uint32_t mask) const;
+
+  // Everything the entities show besides the monitor: settings, profiles, favourites, custom drinks and
+  // statistics; with device_info also serial number, production date, EEPROM version and PIN.
+  void refresh(bool device_info);
+
+  // Statistics (A2 0f): all counters by id, as of the last standby (the sensors read them live).
+  optional<uint32_t> stat(uint16_t id) const;
+#ifdef USE_SENSOR
+  void add_counter(uint16_t id, sensor::Sensor *s) { this->counters_.push_back({id, s}); }
+#endif
+
+  // Profiles: slot 1..4, 0 = not read yet.
+  uint8_t active_profile() const { return this->active_profile_; }
+  void select_profile(uint8_t slot);
+  optional<std::string> profile_name(uint8_t slot) const;
+  void rename_profile(uint8_t slot, const std::string &name);
+
+  // Favourites of the active profile (drink names, newest first) and the custom drink slots 1..6.
+  optional<std::string> favorites_text() const;
+  void set_favorites(const std::string &drinks);
+  optional<std::string> custom_drinks_text() const;
+  void delete_custom_drink(uint8_t slot);
+  // Bean Adapt slots 1..6 (BA read with the device info, BB write). Text: the slots that are set up,
+  // "1 <name> (grind 4.0, mid, normal)". Editing works on one slot: edit_bean() loads it, the setters
+  // change the copy, save_bean() writes it, delete_bean() clears the slot.
+  optional<std::string> bean_slots_text() const;
+  void edit_bean(uint8_t slot);
+  uint8_t bean_edit_slot() const { return this->bean_slot_; }
+  optional<std::string> bean_name() const;
+  optional<float> bean_grind() const;
+  optional<std::string> bean_temperature() const;
+  optional<std::string> bean_aroma() const;
+  void set_bean_name(const std::string &name) { this->bean_edit_.name = name; }
+  void set_bean_grind(float grind);
+  void set_bean_temperature(const std::string &name);
+  void set_bean_aroma(const std::string &name);
+  void save_bean();
+  void delete_bean();
+
+  // Stored recipes (A6 read, 83 .. 00 .. 05 save). The text is "<profile> <drink>: tag value, ...".
+  void read_recipe(int drink, int profile);
+  void save_recipe(int drink, int coffee_ml, int water_ml, float milk_s, int strength, int temp);
+  const std::string &recipe_text() const { return this->recipe_text_; }
+  // Recipe editor: the last recipe read (read_recipe) by TLV tag, with edits staged until save_recipe_edits().
+  // A tag the drink does not have reads empty, so the entity shows unknown.
+  optional<uint16_t> recipe_value(uint8_t tag) const;
+  // Edits are clamped to the drink's limits (B0) when the machine reported them.
+  void set_recipe_value(uint8_t tag, uint16_t value);
+  void save_recipe_edits();
+  // "coffee_ml 20-180, strength 1-5, ..." for the recipe shown; empty until the limits arrived.
+  std::string recipe_limits_text() const;
+
+  // Machine clock (E2 f0 hh mm, as the app sends it).
+  void set_clock(uint8_t hour, uint8_t minute);
+  // Logs every statistics counter (id = value) at INFO.
+  void dump_counters() const;
+  const std::map<uint16_t, uint32_t> &counters() const { return this->stats_; }
+
+  // Exploration: read PAR start .. start+count-1 one by one in the background (reads only); keeps the
+  // non-zero values. scan_done() is false while it runs.
+  void scan_params(uint16_t start, uint16_t count);
+  const std::map<uint16_t, uint32_t> &scan_results() const { return this->scan_; }
+  bool scan_done() const { return this->scan_left_ == 0; }
+  uint16_t scan_answered() const { return this->scan_answered_; }
+  uint16_t scan_next() const { return this->scan_next_; }
+  // "<tx> -> <rx>" of the last raw request.
+  const std::string &last_raw() const { return this->last_raw_; }
+
+  // Skip the rinse before the drink started from here (the app's SKIP_RINSE: op 06, RINSE 27 00).
+  void skip_rinse();
+
+  void select_bean_adapt(uint8_t slot);
+
+  // Drinks: id <-> name ("espresso", "flat white", ...); unknown ids read as hex, names also parse hex.
+  static std::string drink_name(uint8_t id);
+  static int drink_id(const std::string &name);
   // Debug: send any payload (hex, spaces allowed) and log the answer at INFO as "raw <tx> -> <rx>".
   void raw(const std::string &hex);
 
@@ -58,9 +150,11 @@ class Ecam : public Component, public uart::UARTDevice {
   }
 
   std::string state_text() const;
-  // Beans empty: the alarm bits (an idle machine) or flags bit 4 (a brew that ran out).
+  // What the running brew is doing ("grinding", "extraction", "milk", ...), "aborted", or empty.
+  std::string phase_text() const;
+  // Beans empty: bits 5 / 15 on an idle machine, bit 20 ("not enough coffee") when a brew ran out.
   bool beans_empty() const {
-    return status_valid_ && ((status_.alarms & ((1 << 5) | (1 << 15))) != 0 || (status_.flags & 0x10) != 0);
+    return status_valid_ && (status_.alarms & ((1u << 5) | (1u << 15) | (1u << 20))) != 0;
   }
   std::string alarms_text() const;
   std::string accessory_text() const;
@@ -97,7 +191,58 @@ class Ecam : public Component, public uart::UARTDevice {
   uint8_t last_drink_{0};
   std::string last_brew_;
   uint32_t brew_answers_{0};
+  bool clock_supported_{true};
   std::vector<std::function<void()>> status_cbs_;
+
+  void read_stats_(uint16_t start, int pages);
+  void brew_send_(uint8_t drink, std::vector<uint8_t> p);
+#ifdef USE_SENSOR
+  void read_counters_();
+#endif
+  void read_favorites_();
+  void save_recipe_(uint8_t drink, std::map<uint8_t, uint16_t> changes);
+  std::map<uint16_t, uint32_t> params_;
+  std::map<uint16_t, uint32_t> stats_;
+  uint8_t active_profile_{0};
+  std::array<std::string, 4> profile_names_;
+  bool profiles_valid_{false};
+  std::vector<uint8_t> favorites_;
+  bool favorites_valid_{false};
+  std::array<std::string, 6> custom_names_;
+  bool customs_valid_{false};
+  struct Bean {
+    std::string name;
+    uint8_t grind{0};  // half steps: 8 = 4.0
+    uint8_t temperature{0};
+    uint8_t aroma{0};
+    bool used{false};
+  };
+  void read_bean_(uint8_t slot);
+  void write_bean_(uint8_t slot, const Bean &b);
+  std::array<Bean, 6> beans_;
+  uint8_t beans_read_{0};  // bit per slot answered
+  uint8_t bean_slot_{1};
+  Bean bean_edit_;
+  std::string recipe_text_;
+  uint8_t recipe_drink_{0};
+  uint8_t recipe_profile_{0};
+  std::vector<std::pair<uint8_t, uint16_t>> recipe_tlv_;
+  std::map<uint8_t, uint16_t> recipe_edits_;
+  std::map<uint16_t, uint32_t> scan_;
+  uint16_t scan_next_{0};
+  uint16_t scan_left_{0};
+  uint16_t scan_answered_{0};
+  uint32_t scan_at_{0};
+  void scan_step_();
+  std::string last_raw_;
+  struct Limit { uint16_t min, def, max; };
+  std::map<uint8_t, Limit> recipe_limits_;
+  void read_limits_(uint8_t drink);
+  // Last byte of 83 f0: (profile << 2) | operation (0 delete, 1 save, 2 prepare).
+  uint8_t tail_(uint8_t op) const { return uint8_t(((this->active_profile_ ? this->active_profile_ : 1) << 2) | op); }
+#ifdef USE_SENSOR
+  std::vector<std::pair<uint16_t, sensor::Sensor *>> counters_;
+#endif
 };
 
 }  // namespace ecam
