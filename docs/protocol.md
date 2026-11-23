@@ -44,7 +44,7 @@ answer   D0 LEN payload CRC16
 | `B0 F0 <n>` | drink limits (min/default/max per tag) | |
 | `B9 F0 <slot>` / `BB F0 <slot> <name 40 B> <grind> <temp> <aroma> 00 <set up>` | select / write Bean Adapt slot (app: BeanSystem; grind in half steps 2..14 = 1.0..7.0, temperature 0..3 low/mid/high/very high, aroma 0..5 pre-ground/extra mild/mild/normal/strong/extra strong, set up 1 = slot in use) | |
 | `ED F0 <icon>` | Wi-Fi icon on the display, see below | |
-| `E2 F0 <hour> <minute>` | set the machine clock (app: `setHour`) | `E2 F0 00` ok |
+| `E2 F0 <hour> <minute>` | set the machine clock (app: `setHour`); not sent again after a refusal or no answer | `E2 F0 00` ok |
 | `B0 F0 <bev>` | drink limits, see below | |
 | `BA F0 <n>` | Bean Adapt slot read (longshot: BeanSystemRead), n = 1..6 (7: no answer) | `n`, name 20×UTF-16BE (NUL-terminated, old bytes may follow), grind, temperature, aroma, 00, set up (1), enabled — as `BB`; an unused slot reads all 0 and is named "Kaffeebohnen n" on a German machine. `B9 F0 n` answers `n 01` even for an unused slot; BA does not show which slot is active. The Bean Adapt drinks are C8..CD for slots 1..6 |
 | `A3 F0` | recipe checksums (longshot: Checksum) | 6 × u16; on an ECAM450.76.T the first four are one per profile (only the profile with an edited recipe differs: `33F8 360B 360B 360B`), the last two unknown |
@@ -98,17 +98,29 @@ went up at 0E, before the machine was ready again. Hot water (spout in, accessor
 state 0B: 02 → 03 (dispensing, progress 0 → 100 in ~22 s for 80 ml) → 04 → 06 → back to 07/00. Brewing it with
 water_ml 80 instead of the stored 150 poured about 90 ml (PAR 106), so the brew overrides are honoured.
 
+A brew that runs out of beans waits in state 07 phase 16 (alarm bit 20) until the hopper is refilled. Sending
+the stop frame (`83 F0 <drink> 02`) then continues the drink instead of cancelling it, like the button on
+the machine (seen on an ECAM450.65.G). After Stop mid-extraction the monitor reports progress 100 with
+byte 10 = `01`; the Progress sensor shows 0 then.
+
+Skip rinse (`83 F0 <drink> 06 27 00`) targets the rinse before a drink. On an ECAM450.65.G the power-on rinse
+(state 01, phase 05) accepts it with `01 00` but runs to the end and no drink starts; in standby it gets no
+answer, while heating `01 01`.
+
 Switches (physical sensors; the display's "insert …" prompts come from here, not from alarms):
 bit 0 spout, 1 brew-unit motor up, 2 brew-unit motor down, **3 grounds container out**, **4 water tank
-out**, 5 knob, 6 water low, 7 coffee jug (app name; set in normal operation here), 8 milk carafe, 10 clean knob, 13 door open,
-14 pre-ground door open. Bits 3 and 4 are confirmed on this machine.
+out**, 5 knob, 6 water low, 7 coffee jug (app name; set in normal operation here), 8 milk carafe, 9 chocolate tank,
+10 clean knob, 13 door open, 14 pre-ground door open (app names, enum `m6.p`). Only bits 3 and 4 are confirmed, so
+the Switches sensor shows the others as bit numbers. On an ECAM450.65.G (no chocolate, no jug) bit 9 was set
+exactly while a brew waited for beans, and bit 7 for about 2 min around a water tank refill.
 
 Alarm names are the app's (enum `m6.l`, MonitorDataV2 builds a u32 from bytes 3, 4, 8, 9). The app hides
 bits 7, 10, 13, 16, 20 and 21. Bit 16 ("tank too full") is set in normal operation; bit 20 ("not enough
 coffee") is set while a brew waits for beans (seen: hopper ran out mid-brew, phase 10, progress 0). Bits 16+:
 16 tank too full, 17 bean hopper absent, 18 grid presence, 19 infuser sense, 20 not enough coffee,
 21 expansion comm, 22 expansion submodules, 23 grinder 1, 24 grinder 2, 25 condenser fan, 26 clock/BT comm,
-27 SPI comm.
+27 SPI comm. Bit 26 stays set on an ECAM450.65.G, which has no clock module; the Alarms sensor leaves out 16
+and 26.
 
 Alarms: bit 0 water tank empty, **1 grounds container full** (confirmed), 2 descale, 3 replace filter,
 4 grind too fine, **5 beans empty** (confirmed), 6 service, 7 heater probe, 8 too much coffee,

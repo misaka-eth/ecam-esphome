@@ -274,6 +274,10 @@ bool Ecam::brew_with(int drink, std::map<uint8_t, uint16_t> over) {
     if (!f || f->size() < 8) {
       // Overrides alone would stop a milk drink halfway; better not to start.
       ESP_LOGW(TAG, "brew 0x%02X: recipe read failed, not started", drink);
+      char text[8];
+      snprintf(text, sizeof(text), "%02x ", drink);
+      this->last_brew_ = std::string(text) + "failed recipe read";
+      this->brew_answers_++;
       return;
     }
     std::vector<uint8_t> p{0x83, 0xF0, uint8_t(drink), 0x03};
@@ -921,10 +925,16 @@ std::string Ecam::recipe_limits_text() const {
 }
 
 void Ecam::set_clock(uint8_t hour, uint8_t minute) {
-  if (hour > 23 || minute > 59)
+  // Machines without a clock keep alarm bit 26 set and refuse or ignore E2: stop trying until reboot.
+  if (hour > 23 || minute > 59 || !this->clock_supported_ || (this->status_.alarms & (1u << 26)))
     return;
-  this->enqueue_({0xE2, 0xF0, hour, minute}, 2, 800, [hour, minute](const std::vector<uint8_t> *f) {
-    ESP_LOGI(TAG, "clock %02u:%02u: %s", hour, minute, f ? ((*f)[4] == 0 ? "ok" : "rejected") : "no answer");
+  this->enqueue_({0xE2, 0xF0, hour, minute}, 2, 800, [this, hour, minute](const std::vector<uint8_t> *f) {
+    bool ok = f && f->size() > 4 && (*f)[4] == 0;
+    ESP_LOGI(TAG, "clock %02u:%02u: %s", hour, minute, ok ? "ok" : f ? "rejected" : "no answer");
+    if (!ok) {
+      this->clock_supported_ = false;
+      ESP_LOGW(TAG, "clock: not supported by this machine, no more clock syncs");
+    }
   });
 }
 
@@ -1158,6 +1168,7 @@ std::string Ecam::phase_text() const {
         case 0x08: case 0x09: case 0x0A: return "pre-infusion";
         case 0x0B: return "extraction";
         case 0x0D: case 0x0E: return "finishing";
+        case 0x16: return "waiting for beans";
         default: return "phase " + to_string(p);
       }
     case 0x08: return "rinsing";
@@ -1182,7 +1193,8 @@ std::string Ecam::accessory_text() const {
 
 std::string Ecam::alarms_text() const {
   // Names from the app (enum m6.l). Bit 16 ("tank too full") is set in normal operation and the app
-  // ignores it, as it does 7, 10, 13, 20 and 21; they are listed here anyway except 16.
+  // ignores it, as it does 7, 10, 13, 20 and 21; they are listed here anyway except 16. Bit 26 (clock/BT
+  // comm) stays set on models without a clock module (ECAM450.65.G), so it is left out too.
   static const char *const NAMES[28] = {
       "tank empty",        "grounds full",       "descale",          "replace filter",
       "grind too fine",    "beans empty",        "service",          "heater probe",
@@ -1190,7 +1202,7 @@ std::string Ecam::alarms_text() const {
       "hydraulic problem", "insert tank",        "clean knob",       "beans empty",
       nullptr,             "bean hopper absent", "grid presence",    "infuser sense",
       "beans empty",       "expansion comm",     "expansion modules", "grinder 1",
-      "grinder 2",         "condenser fan",      "clock comm",       "SPI comm"};
+      "grinder 2",         "condenser fan",      nullptr,            "SPI comm"};
   if (!this->status_valid_)
     return "";
   std::string out;

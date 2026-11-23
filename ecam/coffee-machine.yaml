@@ -5,6 +5,12 @@
 # Shared package: include it from a per-site device file (see example.yaml) and keep local
 # overrides there. The site file sets ecam_repo / ecam_ref; this package pulls the component
 # from the same repo, so an update is a push plus Install.
+# Settings, names and counters are read when the machine comes online, after a drink, after a write
+# and on standby. The periodic read only catches changes made on the machine's own display; set
+# ecam_poll_interval in the site file (e.g. 60s, or 24h to all but switch it off).
+substitutions:
+  ecam_poll_interval: 10min
+
 esphome:
   name: ${name}
   friendly_name: Coffee
@@ -133,7 +139,8 @@ api:
         - lambda: 'id(machine).raw(payload);'
 
 # The machine's clock (autostart, display) follows Home Assistant's time: on every sync, when the
-# machine comes online, and hourly.
+# machine comes online, and hourly. Machines without a clock (alarm bit 26 set, E2 refused or not
+# answered) get no more syncs until the ESP restarts.
 time:
   - platform: homeassistant
     id: ha_time
@@ -185,7 +192,8 @@ button:
     icon: mdi:coffee-outline
     on_press:
       - lambda: 'id(machine).brew(0x01, 0, 0, 0, 0, -1);'
-  # Skips the rinse the machine runs before the drink started from here (the app's "skip rinse").
+  # Skips the rinse the machine runs before the drink started from here (the app's "skip rinse", tag 27).
+  # Not the rinse after power-on: on an ECAM450.65.G that one runs to the end regardless.
   - platform: template
     name: Skip rinse
     icon: mdi:debug-step-over
@@ -826,14 +834,15 @@ text_sensor:
     update_interval: 1s
     lambda: |-
       if (!id(machine).has_status()) return {"unknown"};
-      // Names from the app (enum m6.p); bit 8 is the milk carafe ("IFD caraffe").
-      static const char *names[16] = {"spout", "brew unit up", "brew unit down", "grounds container out",
-          "tank out", "knob", "water low", "coffee jug", "jug", "chocolate tank", "clean knob", "b11", "b12",
-          "door open", "preground door open", "b15"};
+      // Only bits 3 and 4 mean the same on every model seen; the app's names for the others (enum m6.p,
+      // see docs/protocol.md) don't fit e.g. the ECAM450.65.G, so they show as bit numbers.
       uint16_t sw = id(machine).status().switches;
       std::string out;
       for (int i = 0; i < 16; i++)
-        if (sw & (1 << i)) { if (!out.empty()) out += ", "; out += names[i]; }
+        if (sw & (1 << i)) {
+          if (!out.empty()) out += ", ";
+          out += i == 3 ? "grounds container out" : i == 4 ? "tank out" : "bit " + to_string(i);
+        }
       return out.empty() ? std::string("none") : out;
 
 sensor:
@@ -845,8 +854,10 @@ sensor:
     update_interval: 1s
     lambda: |-
       if (!id(machine).has_status()) return {};
-      return id(machine).brewing() ? (float) id(machine).status().progress : 0.0f;
-  # Counters, read every minute (PAR numbers as in the service menu).
+      // An aborted brew reports 100 %; show 0 so it does not read as finished.
+      auto &s = id(machine).status();
+      return id(machine).brewing() && s.result != 0x01 ? (float) s.progress : 0.0f;
+  # Counters, read after each drink, on standby and every ecam_poll_interval (PAR numbers as in the service menu).
   - platform: template
     id: water_total
     name: Water total
@@ -855,7 +866,7 @@ sensor:
     state_class: total_increasing
     accuracy_decimals: 2
     update_interval: never
-  # Statistics counters (live PAR reads every minute; A2 lags until standby): 3000-3003 per category, 3003 + drink id per drink
+  # Statistics counters (live PAR reads; A2 lags until standby): 3000-3003 per category, 3003 + drink id per drink
   # (drinks of the ECAM450.76.T as listed in the app).
   - {platform: ecam, id: coffees, name: Coffees, counter: 3000}
   - {platform: ecam, name: Milk coffees, counter: 3001}
@@ -997,6 +1008,19 @@ binary_sensor:
     lambda: |-
       if (!id(machine).has_status()) return {};
       return id(machine).brewing();
+    on_release:
+      - delay: 3s
+      - script.execute: refresh_all
+  # Statistics (A2) are only written when the machine goes to standby: read them then.
+  - platform: template
+    id: standby
+    internal: true
+    lambda: |-
+      if (!id(machine).has_status()) return {};
+      return id(machine).status().state == 0x00;
+    on_press:
+      - delay: 5s
+      - script.execute: refresh_all
   - platform: template
     id: tank
     name: Water tank
@@ -1048,6 +1072,14 @@ binary_sensor:
       return (id(machine).status().alarms & (1 << 11)) != 0;
 
 script:
+  - id: refresh_all
+    then:
+      - if:
+          condition:
+            lambda: 'return id(machine).has_status();'
+          then:
+            - lambda: 'id(machine).refresh(false);'
+            - script.execute: read_counters
   - id: sync_clock
     then:
       - lambda: |-
@@ -1066,11 +1098,6 @@ script:
           id(machine).read_param(101, [](uint32_t v) { id(grounds_level).publish_state(v); });
 
 interval:
-  - interval: 60s
+  - interval: ${ecam_poll_interval}
     then:
-      - if:
-          condition:
-            lambda: 'return id(machine).has_status();'
-          then:
-            - lambda: 'id(machine).refresh(false);'
-            - script.execute: read_counters
+      - script.execute: refresh_all

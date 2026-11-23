@@ -191,6 +191,7 @@ class Ecam : public Component, public uart::UARTDevice {
   uint8_t last_drink_{0};
   std::string last_brew_;
   uint32_t brew_answers_{0};
+  bool clock_supported_{true};
   std::vector<std::function<void()>> status_cbs_;
 
   void read_stats_(uint16_t start, int pages);
