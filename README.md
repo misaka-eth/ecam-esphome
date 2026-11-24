@@ -58,10 +58,20 @@ works without Home Assistant. Add it to the package files (see `example.yaml`):
     files: [ecam/coffee-machine.yaml, ecam/web-ui.yaml]
 ```
 
-It has no login, so anyone on the network can use the machine. The UI is a React app in `webapp/`.
-`npm run build` there writes `components/ecam_web/ecam.js`, which the `ecam_web` component serves gzipped
-from flash. ESPHome's `web_server` page loads it (`js_url: /ecam.js`), and the UI uses web_server's `/events`
-stream and REST API. `ESP=http://<device> npm run dev` runs it locally against a device.
+It has no login by default, so anyone on the network can use the machine. To require one, also add
+`ecam/web-ui-auth.yaml` and put `web_user` / `web_password` into `secrets.yaml`:
+
+```yaml
+    files: [ecam/coffee-machine.yaml, ecam/web-ui.yaml, ecam/web-ui-auth.yaml]
+```
+
+The login covers the page, the UI script, the API and the event stream. It is HTTP Basic over plain HTTP
+(the ESP has no TLS), so for anything beyond a trusted LAN put the device behind a reverse proxy with TLS.
+
+The UI is a React app in `webapp/`. `npm run build` there writes `components/ecam_web/ecam.js`, which the
+`ecam_web` component serves gzipped from flash; CI rebuilds it and fails if the committed file differs.
+ESPHome's `web_server` page loads it (`js_url: /ecam.js`), and the UI uses web_server's `/events` stream
+and REST API. `ESP=http://<device> npm run dev` runs it locally against a device.
 
 ## Reverse-engineering notes
 
