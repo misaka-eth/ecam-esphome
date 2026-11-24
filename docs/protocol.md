@@ -97,8 +97,10 @@ Phases seen (byte 6, one sample per second): power-on in state 01 runs 01 → 02
 went up at 0E, before the machine was ready again. Hot water (spout in, accessory 01, switch bit 0) runs in
 state 0B: 02 → 03 (dispensing, progress 0 → 100 in ~22 s for 80 ml) → 04 → 06 → back to 07/00. Brewing it with
 water_ml 80 instead of the stored 150 poured about 90 ml (PAR 106), so the brew overrides are honoured.
+An americano brews like an espresso up to 0E, then adds the water in state 07: 7B (~6 s) → 7F (water, ~44 s)
+→ 80 → 81 → 00.
 
-A brew that runs out of beans waits in state 07 phase 16 (alarm bit 20) until the hopper is refilled. Sending
+A brew that runs out of beans waits in state 07 phase 10 (decimal 16; alarm bit 20) until the hopper is refilled. Sending
 the stop frame (`83 F0 <drink> 02`) then continues the drink instead of cancelling it, like the button on
 the machine (seen on an ECAM450.65.G). After Stop mid-extraction the monitor reports progress 100 with
 byte 10 = `01`; the Progress sensor shows 0 then.

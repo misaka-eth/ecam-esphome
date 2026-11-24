@@ -1168,8 +1168,16 @@ std::string Ecam::phase_text() const {
         case 0x08: case 0x09: case 0x0A: return "pre-infusion";
         case 0x0B: return "extraction";
         case 0x0D: case 0x0E: return "finishing";
-        case 0x16: return "waiting for beans";
-        default: return "phase " + to_string(p);
+        case 0x10: return "waiting for beans";
+        // Americano: water added after the coffee.
+        case 0x7B: return "preparing";
+        case 0x7F: return "hot water";
+        case 0x80: case 0x81: return "finishing";
+        default: {
+          char text[16];
+          snprintf(text, sizeof(text), "phase 0x%02X", p);
+          return text;
+        }
       }
     case 0x08: return "rinsing";
     case 0x0A:
