@@ -493,6 +493,57 @@ function Metric({ name, domain = 'sensor' }: { name: string; domain?: string }) 
   );
 }
 
+// Grounds container drawn as a bin that fills with coffee grounds; the number beside it is the
+// fill level the ESP derives from PAR 40 (100 % = the machine reports "full").
+const BIN = 'M17 20 H83 L77 106 Q76 111 71 111 H29 Q24 111 23 106 Z';
+const BIN_TOP = 20;
+const BIN_DEPTH = 91;
+
+function GroundsGauge() {
+  const fill = num(useEntity('sensor', 'Grounds container fill'));
+  const full = on(useEntity('binary_sensor', 'Grounds container full'));
+  if (fill === undefined) return null;
+  const pct = Math.max(0, Math.min(100, Math.round(fill)));
+  const level = full || pct >= 90 ? 'text-rose-300' : pct >= 70 ? 'text-crema' : 'text-ink';
+  return (
+    <div className="flex items-center gap-5 pb-2">
+      <svg viewBox="0 0 100 120" className="h-28 w-24 shrink-0" role="img" aria-label={`${t('Grounds container fill')}: ${pct} %`}>
+        <defs>
+          <clipPath id="grounds-bin">
+            <path d={BIN} />
+          </clipPath>
+          <linearGradient id="grounds-coffee" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#9a6a3f" />
+            <stop offset="1" stopColor="#3f2717" />
+          </linearGradient>
+        </defs>
+        <path d={BIN} className="fill-navy-950/60" />
+        <g clipPath="url(#grounds-bin)" opacity={pct > 0 ? 1 : 0}>
+          <g className="transition-transform duration-700 ease-out" style={{ transform: `translateY(${(BIN_DEPTH * (100 - pct)) / 100}px)` }}>
+            <rect x="0" y={BIN_TOP} width="100" height={BIN_DEPTH + 4} fill="url(#grounds-coffee)" />
+            {[22, 34, 47, 58, 70, 79].map((x, i) => (
+              <circle key={x} cx={x} cy={BIN_TOP + (i % 2 ? 1.5 : 0.5)} r={i % 3 ? 3 : 4} fill="#9a6a3f" />
+            ))}
+          </g>
+        </g>
+        {[25, 50, 75].map((m) => (
+          <line key={m} x1="70" x2="76" y1={BIN_TOP + (BIN_DEPTH * (100 - m)) / 100} y2={BIN_TOP + (BIN_DEPTH * (100 - m)) / 100}
+            className="stroke-ink-dim" strokeWidth="1.5" strokeLinecap="round" />
+        ))}
+        <path d={BIN} fill="none" className={full ? 'stroke-rose-400' : 'stroke-ink-muted'} strokeWidth="3" strokeLinejoin="round" />
+        <rect x="11" y="13" width="78" height="7" rx="3" className={full ? 'fill-rose-400' : 'fill-ink-muted'} />
+      </svg>
+      <div>
+        <div className={`font-mono text-4xl tabular-nums ${level}`}>
+          {pct}
+          <span className="text-xl text-ink-muted"> %</span>
+        </div>
+        <div className="mt-1 text-sm text-ink-muted">{t(full ? 'Empty the grounds container' : 'Grounds container fill')}</div>
+      </div>
+    </div>
+  );
+}
+
 function MaintenanceTab() {
   const descale = on(useEntity('binary_sensor', 'Descale needed'));
   const grounds = on(useEntity('binary_sensor', 'Grounds container full'));
@@ -505,6 +556,7 @@ function MaintenanceTab() {
         <Metric name="Milk cleans" />
       </Card>
       <Card title={t('Grounds container')} icon="trash" right={grounds ? <Pill tone="amber">{t('Grounds container full')}</Pill> : undefined}>
+        <GroundsGauge />
         <Metric name="Grounds level" />
       </Card>
       <Card title={t('Water filter')} icon="drop">

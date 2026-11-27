@@ -10,6 +10,9 @@
 # ecam_poll_interval in the site file (e.g. 60s, or 24h to all but switch it off).
 substitutions:
   ecam_poll_interval: 10min
+  # PAR 40 value at which the machine reports "grounds container full" (ECAM450.76: 99, about 220 g
+  # of wet grounds). Other models may have a different container; set it in the site file.
+  ecam_grounds_full: "99"
 
 esphome:
   name: ${name}
@@ -948,11 +951,22 @@ sensor:
     accuracy_decimals: 2
     update_interval: never
   # PAR 101: grounds in the container, + PAR 51 per brew (depends on strength and drink), 0 after
-  # emptying it (confirmed). The level where "grounds container full" comes is not known yet.
+  # emptying it (confirmed; about 0.39 g of wet grounds per unit, "full" came at 593).
   - platform: template
     id: grounds_level
     name: Grounds level
     icon: mdi:delete-variant
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+  # PAR 40: the same grounds in coarser units (about PAR 101 / 5.7), 0 after emptying. The machine
+  # reports "full" when it passes ${ecam_grounds_full} (PAR 41 counts 10 → 0 on the way, confirmed
+  # 2026-11-27), so this is the fill level in percent; 100 while the alarm is on.
+  - platform: template
+    id: grounds_fill
+    name: Grounds container fill
+    icon: mdi:delete-variant
+    unit_of_measurement: "%"
     state_class: measurement
     accuracy_decimals: 0
     update_interval: never
@@ -988,7 +1002,7 @@ binary_sensor:
             b->invalidate_state();
           for (auto *b : {id(tank_out), id(grounds_out)})
             b->invalidate_state();
-          for (auto *s : {id(progress), id(water_total), id(milk_cleans), id(filters), id(water_since_filter), id(descales), id(water_since_descale), id(grounds_level)})
+          for (auto *s : {id(progress), id(water_total), id(milk_cleans), id(filters), id(water_since_filter), id(descales), id(water_since_descale), id(grounds_level), id(grounds_fill)})
             s->publish_state(NAN);
     on_press:
       - lambda: 'id(machine).refresh(true);'
@@ -1042,6 +1056,10 @@ binary_sensor:
     lambda: |-
       if (!id(machine).has_status()) return {};
       return (id(machine).status().switches & (1 << 3)) != 0;
+    # Put back after emptying: read the (reset) grounds level now instead of at the next poll.
+    on_release:
+      - delay: 2s
+      - script.execute: refresh_all
   - platform: template
     id: grounds
     name: Grounds container full
@@ -1096,6 +1114,9 @@ script:
           id(machine).read_param(105, [](uint32_t v) { id(descales).publish_state(v); });
           id(machine).read_param(100, [](uint32_t v) { id(water_since_descale).publish_state(v / 25000.0f); });
           id(machine).read_param(101, [](uint32_t v) { id(grounds_level).publish_state(v); });
+          id(machine).read_param(40, [](uint32_t v) {
+            id(grounds_fill).publish_state(id(grounds).state ? 100.0f : std::min(100.0f, v * 100.0f / ${ecam_grounds_full}));
+          });
 
 interval:
   - interval: ${ecam_poll_interval}

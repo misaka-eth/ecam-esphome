@@ -57,7 +57,8 @@ const de: Record<string, string> = {
   // maintenance
   'Water since descale': 'Wasser seit Entkalkung', 'Water since filter change': 'Wasser seit Filterwechsel',
   Descales: 'Entkalkungen', 'Filters installed': 'Filter eingesetzt', 'Milk cleans': 'Milchreinigungen',
-  'Grounds container': 'Satzbehälter', 'Grounds level': 'Füllstand',
+  'Grounds container': 'Satzbehälter', 'Grounds level': 'Kaffeesatz (Rohwert)',
+  'Grounds container fill': 'Füllstand', 'Empty the grounds container': 'Bitte Satzbehälter leeren',
   // device
   'Serial number': 'Seriennummer', 'Production date': 'Produktionsdatum', 'EEPROM version': 'EEPROM-Version',
   Accessory: 'Zubehör', Switches: 'Schalter', 'Custom drinks': 'Eigene Getränke', Restart: 'ESP neu starten',
