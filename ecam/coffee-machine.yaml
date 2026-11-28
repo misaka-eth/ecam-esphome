@@ -995,7 +995,8 @@ sensor:
     accuracy_decimals: 2
     update_interval: never
   # PAR 101: grounds in the container, + PAR 51 per brew (depends on strength and drink), 0 after
-  # emptying it (confirmed; about 0.39 g of wet grounds per unit, "full" came at 593).
+  # taking the container fully out, emptied or not (confirmed; about 0.39 g of wet grounds per unit,
+  # "full" came at 593).
   - platform: template
     id: grounds_level
     name: Grounds level

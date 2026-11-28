@@ -242,7 +242,7 @@ actions; misaka's machine reads 0 for most of them):
 | 105 | 5 | descales (presumed) |
 | 100 | 87134 | water since the last descale (presumed): grows by the sum of the flow meters PAR 400 + 401 (25 pulses/ml); unchanged by a filter change |
 | 400, 401 | +3470/+20 espresso, +1729/+14 rinse, +4660/+3800 cappuccino + milk clean | two flow meters, 401 mainly the milk/steam circuit; 402/403 grow alike (lifetime totals) |
-| 101 | + PAR 51 per brew, 0 per rinse | **grounds container fill** (confirmed: 0 after emptying the container, 2026-11-22); about 0.39 g of wet grounds per unit (593 ≈ 230 g weighed) |
+| 101 | + PAR 51 per brew, 0 per rinse | **grounds container fill** (confirmed: 0 after emptying the container, 2026-11-22). The machine can't tell whether it was emptied: taking the container fully out (19 s) reset 101, 40 and 41 without emptying, a short pull (5 s, switch bit 3 set as well) did not; about 0.39 g of wet grounds per unit (593 ≈ 230 g weighed) |
 | 40 | 0 → 105 over 14 brews | **grounds container fill in coarser units** (confirmed): about PAR 101 / 5.7, 0 after emptying |
 | 41 | 10 → 0 | **countdown to "grounds container full"** (confirmed 2026-11-27): ceil((≈98.5 − PAR 40) / ≈10.2) at all 15 points; the alarm (bit 1) came in the same frame as 0 (PAR 40 98 → 105), 10 after emptying. `Grounds container fill` = PAR 40 / `ecam_grounds_full` (99) in percent |
 | 42, 43 | 10 → 12, 3 → 8 in five days | unknown; rise after a power-on rinse (43 once at a brew too), **not** reset by emptying the grounds container and drip tray |
