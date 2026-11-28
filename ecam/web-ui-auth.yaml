@@ -1,0 +1,11 @@
+# Login for the web UI (HTTP Basic): add it after web-ui.yaml in the site file's package files,
+#
+#     files: [ecam/coffee-machine.yaml, ecam/web-ui.yaml, ecam/web-ui-auth.yaml]
+#
+# and put web_user / web_password into secrets.yaml. It covers the page, the UI script, the API and the
+# event stream. Basic auth over plain HTTP (the ESP has no TLS) sends the password readable on the
+# network, so outside a trusted LAN put the device behind a reverse proxy with TLS.
+web_server:
+  auth:
+    username: !secret web_user
+    password: !secret web_password

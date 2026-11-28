@@ -3,7 +3,8 @@
 #
 #     files: [ecam/coffee-machine.yaml, ecam/web-ui.yaml]
 #
-# No login: anyone on the network can use the machine through it (add web_server auth to change that).
+# No login by default: anyone on the network can use the machine through it. Add ecam/web-ui-auth.yaml to
+# the package files to require one.
 external_components:
   - source:
       type: git

@@ -14,6 +14,8 @@ packages:
     files: [ecam/coffee-machine.yaml]
     # With the web UI at http://<device>/ (no login):
     # files: [ecam/coffee-machine.yaml, ecam/web-ui.yaml]
+    # With the web UI and a login (web_user / web_password in secrets.yaml):
+    # files: [ecam/coffee-machine.yaml, ecam/web-ui.yaml, ecam/web-ui-auth.yaml]
 
 # Local overrides merge into the package, e.g.:
 # wifi:

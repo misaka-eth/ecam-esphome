@@ -81,7 +81,7 @@ Deleting a profile is a rename to an all-zero name. Deleting a custom drink: `83
 
 | Byte | Meaning |
 |------|---------|
-| 0 | accessory: 00 none, 01 hot-water spout, 02 milk jug, 04 milk jug (clean position), 06 cold-milk jug; 07 seen once with the spout not fully inserted |
+| 0 | accessory: 00 none, 01 hot-water spout, 02 milk jug, 04 milk jug (clean position), 06 cold-milk jug, 07 cold-milk jug in the clean position (confirmed on an ECAM450.76; the app asks to clean the jug then, as for 04). In standby the 450.76 reports 07 and switch bit 15 whatever is attached (spout included), from ~10 s after switching off until power-on |
 | 1–2 | **switches**, u16 little-endian (below) |
 | 3–4 | **alarms**, u16 little-endian (below) |
 | 5 | state: 00 standby, 01 heating, 02 turning off, 04 descaling, 07 ready / brewing, 08 rinsing, 0A milk, 0B hot water, 0C milk clean |
@@ -97,21 +97,33 @@ Phases seen (byte 6, one sample per second): power-on in state 01 runs 01 → 02
 went up at 0E, before the machine was ready again. Hot water (spout in, accessory 01, switch bit 0) runs in
 state 0B: 02 → 03 (dispensing, progress 0 → 100 in ~22 s for 80 ml) → 04 → 06 → back to 07/00. Brewing it with
 water_ml 80 instead of the stored 150 poured about 90 ml (PAR 106), so the brew overrides are honoured.
+An americano brews like an espresso up to 0E, then adds the water in state 07: 7B (~6 s) → 7F (water, ~44 s)
+→ 80 → 81 → 00.
 
-A brew that runs out of beans waits in state 07 phase 16 (alarm bit 20) until the hopper is refilled. Sending
+A brew that runs out of beans waits in state 07 phase 10 (decimal 16; alarm bit 20) until the hopper is refilled. Sending
 the stop frame (`83 F0 <drink> 02`) then continues the drink instead of cancelling it, like the button on
 the machine (seen on an ECAM450.65.G). After Stop mid-extraction the monitor reports progress 100 with
 byte 10 = `01`; the Progress sensor shows 0 then.
 
 Skip rinse (`83 F0 <drink> 06 27 00`) targets the rinse before a drink. On an ECAM450.65.G the power-on rinse
 (state 01, phase 05) accepts it with `01 00` but runs to the end and no drink starts; in standby it gets no
-answer, while heating `01 01`.
+answer, while heating `01 01`. On an ECAM450.76 (2026-11-28, cold start) skip rinse during the power-on
+rinse, and a brew sent in standby or while heating, all get `01 01` and change nothing: the power-on rinse
+always runs (also after only 80 min off), and no rinse before a drink was ever seen on that machine.
 
 Switches (physical sensors; the display's "insert …" prompts come from here, not from alarms):
-bit 0 spout, 1 brew-unit motor up, 2 brew-unit motor down, **3 grounds container out**, **4 water tank
-out**, 5 knob, 6 water low, 7 coffee jug (app name; set in normal operation here), 8 milk carafe, 9 chocolate tank,
-10 clean knob, 13 door open, 14 pre-ground door open (app names, enum `m6.p`). Only bits 3 and 4 are confirmed, so
-the Switches sensor shows the others as bit numbers. On an ECAM450.65.G (no chocolate, no jug) bit 9 was set
+**0 spout**, 1 brew-unit motor up, 2 brew-unit motor down, **3 grounds container out**, **4 water tank
+out**, 5 knob, **6 water low**, 7 coffee jug (app name; set in normal operation here), 8 milk carafe, 9 chocolate tank,
+10 clean knob, **11 cold milk jug**, 13 door open, 14 pre-ground door open, **15 cold milk jug in the clean
+position** (app names, enum `m6.p`; 11 and 15 have none).
+Confirmed on an ECAM450.76 (2026-11-28): 0 exactly while the hot-water spout is in (accessory 01); 6 set at the
+end of a coffee while the display asked to fill the tank, cleared by the refill (no alarm bit with it); 11 exactly
+while the cold-milk jug is attached (accessory 06), on and off; turned to the clean position it reads accessory 07
+and bit 15 instead of 11 (bit 15 and 07 also show in every standby, see the accessory byte). Bit 7 comes on
+2–4 s after the water tank is put back (with or without a refill; 8 of 10 times in a week), goes off when the
+tank is taken out or water runs through the brew unit (a brew or the power-on rinse), but not with hot water.
+The Switches sensor names 0, 3, 4, 6, 11 and 15 (15 not in standby) and
+shows the others as bit numbers; 7 came on after a tank refill and stayed (about 2 min on a 450.65.G). On an ECAM450.65.G (no chocolate, no jug) bit 9 was set
 exactly while a brew waited for beans, and bit 7 for about 2 min around a water tank refill.
 
 Alarm names are the app's (enum `m6.l`, MonitorDataV2 builds a u32 from bytes 3, 4, 8, 9). The app hides
@@ -211,8 +223,8 @@ The service menu shows the same ids as `PAR <decimal>`.
 | 400, 402 | flow-meter pulses, about 25 per ml (2620 pulses weighed as 105 g) |
 | 115 | milk cleans (**confirmed**: +1 per milk clean; 116 unchanged) |
 | 199 | mainboard EEPROM version |
-| 200–203 | production date |
-| 205–209 | serial number (ASCII) |
+| 200–203 | factory date: 201 month, 202 day, 203 year (two digits); 200 unknown (523). An ECAM450.76 reads 10 3 22 = 2022-10-03, one week after the production date on the sticker behind the water tank (YYMMDD 220926 = 2022-09-26) |
+| 205–209 | serial number (ASCII); after the product code's letters comes the production date YYMMDD, as on the sticker behind the water tank (217073DU **220926** J0030 = 2022-09-26) |
 | 210 | PIN |
 | 3000 / 3001 / 3002 / 3003 | category totals: coffee only / with milk coffees / water drinks (hot water + tea) / to-go |
 | 3003 + bev id | per-drink counters: 3004 espresso (01), 3013 flat white (0A), 3015 hot milk (0C), 3019 hot water (10), 3025 tea (16) … |
@@ -230,7 +242,10 @@ actions; misaka's machine reads 0 for most of them):
 | 105 | 5 | descales (presumed) |
 | 100 | 87134 | water since the last descale (presumed): grows by the sum of the flow meters PAR 400 + 401 (25 pulses/ml); unchanged by a filter change |
 | 400, 401 | +3470/+20 espresso, +1729/+14 rinse, +4660/+3800 cappuccino + milk clean | two flow meters, 401 mainly the milk/steam circuit; 402/403 grow alike (lifetime totals) |
-| 101 | + PAR 51 per brew, 0 per rinse | **grounds container fill** (confirmed: 0 after emptying the container, 2026-11-22) |
+| 101 | + PAR 51 per brew, 0 per rinse | **grounds container fill** (confirmed: 0 after emptying the container, 2026-11-22). The machine can't tell whether it was emptied: taking the container fully out (19 s) reset 101, 40 and 41 without emptying, a short pull (5 s, switch bit 3 set as well) did not; about 0.39 g of wet grounds per unit (593 ≈ 230 g weighed) |
+| 40 | 0 → 105 over 14 brews | **grounds container fill in coarser units** (confirmed): about PAR 101 / 5.7, 0 after emptying |
+| 41 | 10 → 0 | **countdown to "grounds container full"** (confirmed 2026-11-27): ceil((≈98.5 − PAR 40) / ≈10.2) at all 15 points; the alarm (bit 1) came in the same frame as 0 (PAR 40 98 → 105), 10 after emptying. `Grounds container fill` = PAR 40 / `ecam_grounds_full` (99) in percent |
+| 42, 43 | 10 → 12, 3 → 8 in five days | unknown; rise after a power-on rinse (43 once at a brew too), **not** reset by emptying the grounds container and drip tray |
 | 505 | +1 per drink, 0 per rinse | unknown per-drink counter |
 | 57 | 278 → 279 → 276 | unknown, not a counter |
 | 51–56 | last two brews: 51/53/55 newest, 52/54/56 previous, unchanged in standby | 55 dose setpoint by strength (espresso 40 ml: strength 1 → 6700, 5 → 11400; 2x espresso 12800); 53 the measured result, 55/53 ≈ 280 (no scale in the machine, so presumably brew-unit travel or grinder count); 51 the grounds added to 101 (strength 1 → 23, 5 → 46 for a 40 ml espresso, but 13 for a 40 ml cappuccino at 5) |

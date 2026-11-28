@@ -1168,8 +1168,16 @@ std::string Ecam::phase_text() const {
         case 0x08: case 0x09: case 0x0A: return "pre-infusion";
         case 0x0B: return "extraction";
         case 0x0D: case 0x0E: return "finishing";
-        case 0x16: return "waiting for beans";
-        default: return "phase " + to_string(p);
+        case 0x10: return "waiting for beans";
+        // Americano: water added after the coffee.
+        case 0x7B: return "preparing";
+        case 0x7F: return "hot water";
+        case 0x80: case 0x81: return "finishing";
+        default: {
+          char text[16];
+          snprintf(text, sizeof(text), "phase 0x%02X", p);
+          return text;
+        }
       }
     case 0x08: return "rinsing";
     case 0x0A:
@@ -1181,12 +1189,17 @@ std::string Ecam::phase_text() const {
 }
 
 std::string Ecam::accessory_text() const {
+  // In standby an ECAM450.76 reports 07 (and switch bit 15) whatever is attached, the hot-water spout
+  // included: the sensor isn't read then, so 07 only means the cold-milk jug's clean position when on.
+  if (this->status_.state == 0x00 && this->status_.accessory == 0x07)
+    return "unknown (standby)";
   switch (this->status_.accessory) {
     case 0x00: return "none";
     case 0x01: return "hot water spout";
     case 0x02: return "milk jug";
     case 0x04: return "milk jug (clean)";
     case 0x06: return "cold milk jug";
+    case 0x07: return "cold milk jug (clean)";
     default: return "0x" + format_hex(this->status_.accessory);
   }
 }

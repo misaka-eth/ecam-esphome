@@ -10,6 +10,9 @@
 # ecam_poll_interval in the site file (e.g. 60s, or 24h to all but switch it off).
 substitutions:
   ecam_poll_interval: 10min
+  # PAR 40 value at which the machine reports "grounds container full" (ECAM450.76: 99, about 220 g
+  # of wet grounds). Other models may have a different container; set it in the site file.
+  ecam_grounds_full: "99"
 
 esphome:
   name: ${name}
@@ -192,11 +195,13 @@ button:
     icon: mdi:coffee-outline
     on_press:
       - lambda: 'id(machine).brew(0x01, 0, 0, 0, 0, -1);'
-  # Skips the rinse the machine runs before the drink started from here (the app's "skip rinse", tag 27).
-  # Not the rinse after power-on: on an ECAM450.65.G that one runs to the end regardless.
+  # Skips the rinse some machines run before a drink started from here (the app's "skip rinse", tag 27).
+  # An ECAM450.76 never rinses before a drink (only after power-on), and the power-on rinse can't be
+  # skipped (01 01 on the 450.76, runs to the end on a 450.65.G), so it is only a diagnostic here.
   - platform: template
     name: Skip rinse
     icon: mdi:debug-step-over
+    entity_category: diagnostic
     on_press:
       - lambda: 'id(machine).skip_rinse();'
   - platform: template
@@ -700,7 +705,16 @@ text:
     set_action:
       - lambda: 'id(machine).rename_profile(4, std::string(x));'
 
+# Reports why the ESP last started (power loss, crash/watchdog, OTA, restart button), to tell
+# a firmware problem from the machine cutting the supply.
+debug:
+  update_interval: never
+
 text_sensor:
+  - platform: debug
+    reset_reason:
+      name: Reset reason
+      entity_category: diagnostic
   - platform: template
     name: State
     icon: mdi:coffee-maker
@@ -775,8 +789,9 @@ text_sensor:
       if (t.empty()) return {};
       return t;
   # Device info, read when the machine comes online: PAR 205-209 serial number (4 ASCII bytes each),
-  # 200-203 production date and 199 EEPROM version (shown raw), 210 the Bluetooth PIN.
+  # 200-203 factory date, 199 EEPROM version (shown raw), 210 the Bluetooth PIN.
   - platform: template
+    id: serial_number
     name: Serial number
     icon: mdi:identifier
     entity_category: diagnostic
@@ -792,20 +807,52 @@ text_sensor:
         }
       }
       return out;
+  # PAR 201-203: month, day, two-digit year; PAR 200 unknown (523 here), shown in brackets. On an
+  # ECAM450.76 this is one week after the production date on the sticker behind the water tank
+  # (YYMMDD 220926 there, 10 3 22 here): presumably the end-of-line programming, hence the name.
   - platform: template
-    name: Production date
+    name: Factory date
     icon: mdi:factory
     entity_category: diagnostic
     update_interval: 30s
     lambda: |-
-      std::string out;
-      for (int pid = 200; pid <= 203; pid++) {
-        auto v = id(machine).param(pid);
+      uint32_t p[4];
+      for (int i = 0; i < 4; i++) {
+        auto v = id(machine).param(200 + i);
         if (!v) return {};
-        if (!out.empty()) out += " ";
-        out += to_string(*v);
+        p[i] = *v;
       }
-      return out;
+      char text[40];
+      if (p[1] >= 1 && p[1] <= 12 && p[2] >= 1 && p[2] <= 31 && p[3] <= 99)
+        snprintf(text, sizeof(text), "20%02u-%02u-%02u (%u)", unsigned(p[3]), unsigned(p[1]), unsigned(p[2]), unsigned(p[0]));
+      else
+        snprintf(text, sizeof(text), "%u %u %u %u", unsigned(p[0]), unsigned(p[1]), unsigned(p[2]), unsigned(p[3]));
+      return std::string(text);
+  # Production date from the serial number: the product code (letters at its end) is followed by YYMMDD,
+  # the date printed on the sticker behind the water tank (217073DU 220926 J 0030 = 2022-09-26).
+  - platform: template
+    name: Production date
+    icon: mdi:calendar
+    entity_category: diagnostic
+    update_interval: 30s
+    lambda: |-
+      const std::string &s = id(serial_number).state;
+      auto digit = [](char c) { return c >= '0' && c <= '9'; };
+      for (size_t i = 1; i + 6 <= s.size(); i++) {
+        char before = s[i - 1];
+        if (!((before >= 'A' && before <= 'Z') || (before >= 'a' && before <= 'z')))
+          continue;
+        bool ok = true;
+        for (size_t k = i; k < i + 6; k++)
+          ok = ok && digit(s[k]);
+        if (!ok)
+          continue;
+        int month = (s[i + 2] - '0') * 10 + (s[i + 3] - '0'), day = (s[i + 4] - '0') * 10 + (s[i + 5] - '0');
+        if (month < 1 || month > 12 || day < 1 || day > 31)
+          continue;
+        return "20" + s.substr(i, 2) + "-" + s.substr(i + 2, 2) + "-" + s.substr(i + 4, 2);
+      }
+      return {};
   - platform: template
     name: EEPROM version
     icon: mdi:chip
@@ -834,14 +881,23 @@ text_sensor:
     update_interval: 1s
     lambda: |-
       if (!id(machine).has_status()) return {"unknown"};
-      // Only bits 3 and 4 mean the same on every model seen; the app's names for the others (enum m6.p,
-      // see docs/protocol.md) don't fit e.g. the ECAM450.65.G, so they show as bit numbers.
+      // Named: the bits confirmed on an ECAM450.76 (0, 6 as the app names them; 11, 15 have no app name).
+      // The app's names for the others (enum m6.p, see docs/protocol.md) don't fit e.g. the
+      // ECAM450.65.G, so they show as bit numbers.
       uint16_t sw = id(machine).status().switches;
+      // Bit 15 is also set in standby whatever is attached (with accessory 07, see accessory_text).
+      bool standby = id(machine).status().state == 0x00;
       std::string out;
       for (int i = 0; i < 16; i++)
         if (sw & (1 << i)) {
           if (!out.empty()) out += ", ";
-          out += i == 3 ? "grounds container out" : i == 4 ? "tank out" : "bit " + to_string(i);
+          out += i == 0    ? "spout"
+                 : i == 3  ? "grounds container out"
+                 : i == 4  ? "tank out"
+                 : i == 6  ? "water low"
+                 : i == 11 ? "cold milk jug"
+                 : i == 15 && !standby ? "cold milk jug clean"
+                           : "bit " + to_string(i);
         }
       return out.empty() ? std::string("none") : out;
 
@@ -948,11 +1004,23 @@ sensor:
     accuracy_decimals: 2
     update_interval: never
   # PAR 101: grounds in the container, + PAR 51 per brew (depends on strength and drink), 0 after
-  # emptying it (confirmed). The level where "grounds container full" comes is not known yet.
+  # taking the container fully out, emptied or not (confirmed; about 0.39 g of wet grounds per unit,
+  # "full" came at 593).
   - platform: template
     id: grounds_level
     name: Grounds level
     icon: mdi:delete-variant
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+  # PAR 40: the same grounds in coarser units (about PAR 101 / 5.7), 0 after emptying. The machine
+  # reports "full" when it passes ${ecam_grounds_full} (PAR 41 counts 10 → 0 on the way, confirmed
+  # 2026-11-27), so this is the fill level in percent; 100 while the alarm is on.
+  - platform: template
+    id: grounds_fill
+    name: Grounds container fill
+    icon: mdi:delete-variant
+    unit_of_measurement: "%"
     state_class: measurement
     accuracy_decimals: 0
     update_interval: never
@@ -986,9 +1054,9 @@ binary_sensor:
       - lambda: |-
           for (auto *b : {id(ready), id(brewing), id(tank), id(grounds), id(descale), id(beans), id(drip_tray)})
             b->invalidate_state();
-          for (auto *b : {id(tank_out), id(grounds_out)})
+          for (auto *b : {id(tank_out), id(grounds_out), id(water_low)})
             b->invalidate_state();
-          for (auto *s : {id(progress), id(water_total), id(milk_cleans), id(filters), id(water_since_filter), id(descales), id(water_since_descale), id(grounds_level)})
+          for (auto *s : {id(progress), id(water_total), id(milk_cleans), id(filters), id(water_since_filter), id(descales), id(water_since_descale), id(grounds_level), id(grounds_fill)})
             s->publish_state(NAN);
     on_press:
       - lambda: 'id(machine).refresh(true);'
@@ -1028,6 +1096,15 @@ binary_sensor:
     lambda: |-
       if (!id(machine).has_status()) return {};
       return (id(machine).status().alarms & ((1 << 0) | (1 << 13))) != 0;
+  # Switch bit 6: the display asks to fill the tank (confirmed on an ECAM450.76: set at the end of a
+  # coffee, cleared by the refill; no alarm bit comes with it).
+  - platform: template
+    id: water_low
+    name: Water low
+    device_class: problem
+    lambda: |-
+      if (!id(machine).has_status()) return {};
+      return (id(machine).status().switches & (1 << 6)) != 0;
   - platform: template
     id: tank_out
     name: Water tank removed
@@ -1042,6 +1119,10 @@ binary_sensor:
     lambda: |-
       if (!id(machine).has_status()) return {};
       return (id(machine).status().switches & (1 << 3)) != 0;
+    # Put back after emptying: read the (reset) grounds level now instead of at the next poll.
+    on_release:
+      - delay: 2s
+      - script.execute: refresh_all
   - platform: template
     id: grounds
     name: Grounds container full
@@ -1096,6 +1177,9 @@ script:
           id(machine).read_param(105, [](uint32_t v) { id(descales).publish_state(v); });
           id(machine).read_param(100, [](uint32_t v) { id(water_since_descale).publish_state(v / 25000.0f); });
           id(machine).read_param(101, [](uint32_t v) { id(grounds_level).publish_state(v); });
+          id(machine).read_param(40, [](uint32_t v) {
+            id(grounds_fill).publish_state(id(grounds).state ? 100.0f : std::min(100.0f, roundf(v * 100.0f / ${ecam_grounds_full})));
+          });
 
 interval:
   - interval: ${ecam_poll_interval}

@@ -1,0 +1,33 @@
+# The web UI bundle (components/ecam_web/ecam.js) is committed so users don't need Node. This rebuilds it
+# from webapp/ and fails when the committed file differs, so the bundle always matches the source.
+name: Web UI bundle
+
+on:
+  push:
+    paths: [webapp/**, components/ecam_web/ecam.js, .github/workflows/webapp.yml]
+  pull_request:
+    paths: [webapp/**, components/ecam_web/ecam.js, .github/workflows/webapp.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: webapp/package-lock.json
+      - run: npm ci
+        working-directory: webapp
+      - run: npm run build
+        working-directory: webapp
+      - name: Committed bundle matches the source
+        run: |
+          if ! git diff --exit-code --stat components/ecam_web/ecam.js; then
+            echo "::error::components/ecam_web/ecam.js is out of date: run 'npm run build' in webapp/ and commit it"
+            exit 1
+          fi

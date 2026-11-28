@@ -5,11 +5,11 @@ const de: Record<string, string> = {
   Maintenance: 'Wartung', Device: 'Gerät',
   // machine
   Offline: 'Offline', Connecting: 'Verbinde …', 'Machine offline': 'Maschine offline',
-  'Power on': 'Einschalten', Standby: 'Standby', Stop: 'Stopp', 'Skip rinse': 'Spülen überspringen',
+  'Power on': 'Einschalten', Standby: 'Standby', Stop: 'Stopp',
   'Brew drink': 'Zubereiten', Drink: 'Getränk', 'Active profile': 'Aktives Profil', Favourites: 'Favoriten',
   'Quick drinks': 'Schnellwahl', Espresso: 'Espresso', 'Filter style 330': 'Filterkaffee 330 ml',
   Status: 'Status', Alarms: 'Meldungen', 'No alarms': 'Keine Meldungen', Progress: 'Fortschritt',
-  'Water tank': 'Wassertank leer', 'Water tank removed': 'Wassertank entnommen',
+  'Water tank': 'Wassertank leer', 'Water low': 'Wasser nachfüllen', 'Water tank removed': 'Wassertank entnommen',
   'Grounds container removed': 'Satzbehälter entnommen', 'Grounds container full': 'Satzbehälter voll',
   'Descale needed': 'Entkalken nötig', 'Beans empty': 'Bohnen leer', 'Drip tray': 'Abtropfschale prüfen',
   Ready: 'Bereit', Brewing: 'Bereitet zu', 'Last brew': 'Letzter Bezug',
@@ -57,9 +57,10 @@ const de: Record<string, string> = {
   // maintenance
   'Water since descale': 'Wasser seit Entkalkung', 'Water since filter change': 'Wasser seit Filterwechsel',
   Descales: 'Entkalkungen', 'Filters installed': 'Filter eingesetzt', 'Milk cleans': 'Milchreinigungen',
-  'Grounds container': 'Satzbehälter', 'Grounds level': 'Füllstand',
+  'Grounds container': 'Satzbehälter', 'Grounds level': 'Kaffeesatz (Rohwert)',
+  'Grounds container fill': 'Füllstand', 'Empty the grounds container': 'Bitte Satzbehälter leeren',
   // device
-  'Serial number': 'Seriennummer', 'Production date': 'Produktionsdatum', 'EEPROM version': 'EEPROM-Version',
+  'Serial number': 'Seriennummer', 'Production date': 'Produktionsdatum', 'Factory date': 'Werksdatum (EEPROM)', 'EEPROM version': 'EEPROM-Version',
   Accessory: 'Zubehör', Switches: 'Schalter', 'Custom drinks': 'Eigene Getränke', Restart: 'ESP neu starten',
   'Recipe limits': 'Rezeptgrenzen', 'Machine online': 'Maschine verbunden', Yes: 'Ja', No: 'Nein',
   'Really?': 'Sicher?', Saved: 'Gespeichert', none: 'keine',
