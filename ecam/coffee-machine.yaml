@@ -1115,7 +1115,7 @@ script:
           id(machine).read_param(100, [](uint32_t v) { id(water_since_descale).publish_state(v / 25000.0f); });
           id(machine).read_param(101, [](uint32_t v) { id(grounds_level).publish_state(v); });
           id(machine).read_param(40, [](uint32_t v) {
-            id(grounds_fill).publish_state(id(grounds).state ? 100.0f : std::min(100.0f, v * 100.0f / ${ecam_grounds_full}));
+            id(grounds_fill).publish_state(id(grounds).state ? 100.0f : std::min(100.0f, roundf(v * 100.0f / ${ecam_grounds_full})));
           });
 
 interval:

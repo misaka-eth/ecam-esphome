@@ -110,6 +110,7 @@ function BrewTab() {
             <div className="text-xs uppercase tracking-wider text-ink-dim">{t('Status')}</div>
             <div className="mt-1 text-3xl font-semibold capitalize">{t(state ?? '–')}</div>
           </div>
+          <GroundsGauge compact />
           <div className="flex w-full flex-wrap gap-2 sm:ml-auto sm:w-auto">
             {off ? (
               <Press name="Power on" variant="primary" icon="power" />
@@ -499,15 +500,15 @@ const BIN = 'M17 20 H83 L77 106 Q76 111 71 111 H29 Q24 111 23 106 Z';
 const BIN_TOP = 20;
 const BIN_DEPTH = 91;
 
-function GroundsGauge() {
+function GroundsGauge({ compact = false }: { compact?: boolean }) {
   const fill = num(useEntity('sensor', 'Grounds container fill'));
   const full = on(useEntity('binary_sensor', 'Grounds container full'));
   if (fill === undefined) return null;
   const pct = Math.max(0, Math.min(100, Math.round(fill)));
   const level = full || pct >= 90 ? 'text-rose-300' : pct >= 70 ? 'text-crema' : 'text-ink';
   return (
-    <div className="flex items-center gap-5 pb-2">
-      <svg viewBox="0 0 100 120" className="h-28 w-24 shrink-0" role="img" aria-label={`${t('Grounds container fill')}: ${pct} %`}>
+    <div className={`flex items-center ${compact ? 'gap-3' : 'gap-5 pb-2'}`}>
+      <svg viewBox="0 0 100 120" className={`shrink-0 ${compact ? 'h-12 w-10' : 'h-28 w-24'}`} role="img" aria-label={`${t('Grounds container fill')}: ${pct} %`}>
         <defs>
           <clipPath id="grounds-bin">
             <path d={BIN} />
@@ -534,11 +535,11 @@ function GroundsGauge() {
         <rect x="11" y="13" width="78" height="7" rx="3" className={full ? 'fill-rose-400' : 'fill-ink-muted'} />
       </svg>
       <div>
-        <div className={`font-mono text-4xl tabular-nums ${level}`}>
+        <div className={`font-mono tabular-nums ${compact ? 'text-xl' : 'text-4xl'} ${level}`}>
           {pct}
-          <span className="text-xl text-ink-muted"> %</span>
+          <span className={`${compact ? 'text-sm' : 'text-xl'} text-ink-muted`}> %</span>
         </div>
-        <div className="mt-1 text-sm text-ink-muted">{t(full ? 'Empty the grounds container' : 'Grounds container fill')}</div>
+        <div className={`text-ink-muted ${compact ? 'text-xs' : 'mt-1 text-sm'}`}>{t(full ? 'Empty the grounds container' : compact ? 'Grounds container' : 'Grounds container fill')}</div>
       </div>
     </div>
   );
