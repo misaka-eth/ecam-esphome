@@ -195,11 +195,13 @@ button:
     icon: mdi:coffee-outline
     on_press:
       - lambda: 'id(machine).brew(0x01, 0, 0, 0, 0, -1);'
-  # Skips the rinse the machine runs before the drink started from here (the app's "skip rinse", tag 27).
-  # Not the rinse after power-on: on an ECAM450.65.G that one runs to the end regardless.
+  # Skips the rinse some machines run before a drink started from here (the app's "skip rinse", tag 27).
+  # An ECAM450.76 never rinses before a drink (only after power-on), and the power-on rinse can't be
+  # skipped (01 01 on the 450.76, runs to the end on a 450.65.G), so it is only a diagnostic here.
   - platform: template
     name: Skip rinse
     icon: mdi:debug-step-over
+    entity_category: diagnostic
     on_press:
       - lambda: 'id(machine).skip_rinse();'
   - platform: template

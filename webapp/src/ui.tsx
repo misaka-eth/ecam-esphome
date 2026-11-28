@@ -42,7 +42,6 @@ const paths: Record<string, ReactNode> = {
   ),
   power: <path d="M12 2v10M18.4 6.6a9 9 0 1 1-12.8 0" />,
   stop: <rect x="6" y="6" width="12" height="12" rx="2" />,
-  skip: <path d="M5 4l10 8-10 8zM19 5v14" />,
   play: <path d="M6 3l14 9-14 9z" />,
   save: (
     <>

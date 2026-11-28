@@ -136,9 +136,6 @@ function BrewTab() {
             <div className="h-2.5 overflow-hidden rounded-full bg-navy-700">
               <div className="h-full rounded-full bg-gradient-to-r from-accent to-crema transition-all" style={{ width: `${progress ?? 0}%` }} />
             </div>
-            <div className="mt-4">
-              <Press name="Skip rinse" icon="skip" />
-            </div>
           </div>
         )}
         <div className="mt-5 flex flex-wrap gap-2">

@@ -5,7 +5,7 @@ const de: Record<string, string> = {
   Maintenance: 'Wartung', Device: 'Gerät',
   // machine
   Offline: 'Offline', Connecting: 'Verbinde …', 'Machine offline': 'Maschine offline',
-  'Power on': 'Einschalten', Standby: 'Standby', Stop: 'Stopp', 'Skip rinse': 'Spülen überspringen',
+  'Power on': 'Einschalten', Standby: 'Standby', Stop: 'Stopp',
   'Brew drink': 'Zubereiten', Drink: 'Getränk', 'Active profile': 'Aktives Profil', Favourites: 'Favoriten',
   'Quick drinks': 'Schnellwahl', Espresso: 'Espresso', 'Filter style 330': 'Filterkaffee 330 ml',
   Status: 'Status', Alarms: 'Meldungen', 'No alarms': 'Keine Meldungen', Progress: 'Fortschritt',

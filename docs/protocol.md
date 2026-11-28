@@ -107,7 +107,9 @@ byte 10 = `01`; the Progress sensor shows 0 then.
 
 Skip rinse (`83 F0 <drink> 06 27 00`) targets the rinse before a drink. On an ECAM450.65.G the power-on rinse
 (state 01, phase 05) accepts it with `01 00` but runs to the end and no drink starts; in standby it gets no
-answer, while heating `01 01`.
+answer, while heating `01 01`. On an ECAM450.76 (2026-11-28, cold start) skip rinse during the power-on
+rinse, and a brew sent in standby or while heating, all get `01 01` and change nothing: the power-on rinse
+always runs (also after only 80 min off), and no rinse before a drink was ever seen on that machine.
 
 Switches (physical sensors; the display's "insert …" prompts come from here, not from alarms):
 bit 0 spout, 1 brew-unit motor up, 2 brew-unit motor down, **3 grounds container out**, **4 water tank
