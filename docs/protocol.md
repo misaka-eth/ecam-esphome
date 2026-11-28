@@ -112,10 +112,13 @@ rinse, and a brew sent in standby or while heating, all get `01 01` and change n
 always runs (also after only 80 min off), and no rinse before a drink was ever seen on that machine.
 
 Switches (physical sensors; the display's "insert …" prompts come from here, not from alarms):
-bit 0 spout, 1 brew-unit motor up, 2 brew-unit motor down, **3 grounds container out**, **4 water tank
-out**, 5 knob, 6 water low, 7 coffee jug (app name; set in normal operation here), 8 milk carafe, 9 chocolate tank,
-10 clean knob, 13 door open, 14 pre-ground door open (app names, enum `m6.p`). Only bits 3 and 4 are confirmed, so
-the Switches sensor shows the others as bit numbers. On an ECAM450.65.G (no chocolate, no jug) bit 9 was set
+**0 spout**, 1 brew-unit motor up, 2 brew-unit motor down, **3 grounds container out**, **4 water tank
+out**, 5 knob, **6 water low**, 7 coffee jug (app name; set in normal operation here), 8 milk carafe, 9 chocolate tank,
+10 clean knob, **11 cold milk jug** (no app name), 13 door open, 14 pre-ground door open (app names, enum `m6.p`).
+Confirmed on an ECAM450.76 (2026-11-28): 0 exactly while the hot-water spout is in (accessory 01); 6 set at the
+end of a coffee while the display asked to fill the tank, cleared by the refill (no alarm bit with it); 11 exactly
+while the cold-milk jug is attached (accessory 06), on and off. The Switches sensor names 0, 3, 4, 6 and 11 and
+shows the others as bit numbers; 7 came on after a tank refill and stayed (about 2 min on a 450.65.G). On an ECAM450.65.G (no chocolate, no jug) bit 9 was set
 exactly while a brew waited for beans, and bit 7 for about 2 min around a water tank refill.
 
 Alarm names are the app's (enum `m6.l`, MonitorDataV2 builds a u32 from bytes 3, 4, 8, 9). The app hides

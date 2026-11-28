@@ -9,7 +9,7 @@ const de: Record<string, string> = {
   'Brew drink': 'Zubereiten', Drink: 'Getränk', 'Active profile': 'Aktives Profil', Favourites: 'Favoriten',
   'Quick drinks': 'Schnellwahl', Espresso: 'Espresso', 'Filter style 330': 'Filterkaffee 330 ml',
   Status: 'Status', Alarms: 'Meldungen', 'No alarms': 'Keine Meldungen', Progress: 'Fortschritt',
-  'Water tank': 'Wassertank leer', 'Water tank removed': 'Wassertank entnommen',
+  'Water tank': 'Wassertank leer', 'Water low': 'Wasser nachfüllen', 'Water tank removed': 'Wassertank entnommen',
   'Grounds container removed': 'Satzbehälter entnommen', 'Grounds container full': 'Satzbehälter voll',
   'Descale needed': 'Entkalken nötig', 'Beans empty': 'Bohnen leer', 'Drip tray': 'Abtropfschale prüfen',
   Ready: 'Bereit', Brewing: 'Bereitet zu', 'Last brew': 'Letzter Bezug',

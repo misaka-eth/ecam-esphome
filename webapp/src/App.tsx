@@ -17,7 +17,7 @@ const TABS = [
 type Tab = (typeof TABS)[number]['id'];
 
 const PROBLEMS = [
-  'Water tank', 'Water tank removed', 'Grounds container removed', 'Grounds container full', 'Drip tray',
+  'Water tank', 'Water low', 'Water tank removed', 'Grounds container removed', 'Grounds container full', 'Drip tray',
   'Beans empty', 'Descale needed',
 ];
 
@@ -145,7 +145,7 @@ function BrewTab() {
             </Pill>
           ) : null}
           {problems.map((p) => (
-            <Pill key={p} tone={p === 'Descale needed' ? 'amber' : 'red'}>
+            <Pill key={p} tone={p === 'Descale needed' || p === 'Water low' ? 'amber' : 'red'}>
               <Icon name="alert" className="h-3.5 w-3.5" /> {t(p)}
             </Pill>
           ))}

@@ -839,14 +839,20 @@ text_sensor:
     update_interval: 1s
     lambda: |-
       if (!id(machine).has_status()) return {"unknown"};
-      // Only bits 3 and 4 mean the same on every model seen; the app's names for the others (enum m6.p,
-      // see docs/protocol.md) don't fit e.g. the ECAM450.65.G, so they show as bit numbers.
+      // Named: the bits confirmed on an ECAM450.76 (0, 6 as the app names them; 11 has no app name).
+      // The app's names for the others (enum m6.p, see docs/protocol.md) don't fit e.g. the
+      // ECAM450.65.G, so they show as bit numbers.
       uint16_t sw = id(machine).status().switches;
       std::string out;
       for (int i = 0; i < 16; i++)
         if (sw & (1 << i)) {
           if (!out.empty()) out += ", ";
-          out += i == 3 ? "grounds container out" : i == 4 ? "tank out" : "bit " + to_string(i);
+          out += i == 0    ? "spout"
+                 : i == 3  ? "grounds container out"
+                 : i == 4  ? "tank out"
+                 : i == 6  ? "water low"
+                 : i == 11 ? "cold milk jug"
+                           : "bit " + to_string(i);
         }
       return out.empty() ? std::string("none") : out;
 
@@ -1002,7 +1008,7 @@ binary_sensor:
       - lambda: |-
           for (auto *b : {id(ready), id(brewing), id(tank), id(grounds), id(descale), id(beans), id(drip_tray)})
             b->invalidate_state();
-          for (auto *b : {id(tank_out), id(grounds_out)})
+          for (auto *b : {id(tank_out), id(grounds_out), id(water_low)})
             b->invalidate_state();
           for (auto *s : {id(progress), id(water_total), id(milk_cleans), id(filters), id(water_since_filter), id(descales), id(water_since_descale), id(grounds_level), id(grounds_fill)})
             s->publish_state(NAN);
@@ -1044,6 +1050,15 @@ binary_sensor:
     lambda: |-
       if (!id(machine).has_status()) return {};
       return (id(machine).status().alarms & ((1 << 0) | (1 << 13))) != 0;
+  # Switch bit 6: the display asks to fill the tank (confirmed on an ECAM450.76: set at the end of a
+  # coffee, cleared by the refill; no alarm bit comes with it).
+  - platform: template
+    id: water_low
+    name: Water low
+    device_class: problem
+    lambda: |-
+      if (!id(machine).has_status()) return {};
+      return (id(machine).status().switches & (1 << 6)) != 0;
   - platform: template
     id: tank_out
     name: Water tank removed
