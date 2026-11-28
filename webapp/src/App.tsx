@@ -572,7 +572,7 @@ function DeviceTab() {
   return (
     <Grid>
       <Card title={t('Machine')} icon="chip">
-        {['Serial number', 'Factory date', 'EEPROM version', 'Accessory', 'Switches', 'Custom drinks'].map((n) => (
+        {['Serial number', 'Production date', 'Factory date', 'EEPROM version', 'Accessory', 'Switches', 'Custom drinks'].map((n) => (
           <Metric key={n} name={n} domain="text_sensor" />
         ))}
       </Card>

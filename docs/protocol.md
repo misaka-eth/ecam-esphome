@@ -224,7 +224,7 @@ The service menu shows the same ids as `PAR <decimal>`.
 | 115 | milk cleans (**confirmed**: +1 per milk clean; 116 unchanged) |
 | 199 | mainboard EEPROM version |
 | 200–203 | factory date: 201 month, 202 day, 203 year (two digits); 200 unknown (523). An ECAM450.76 reads 10 3 22 = 2022-10-03, one week after the production date on the sticker behind the water tank (YYMMDD 220926 = 2022-09-26) |
-| 205–209 | serial number (ASCII) |
+| 205–209 | serial number (ASCII); after the product code's letters comes the production date YYMMDD, as on the sticker behind the water tank (217073DU **220926** J0030 = 2022-09-26) |
 | 210 | PIN |
 | 3000 / 3001 / 3002 / 3003 | category totals: coffee only / with milk coffees / water drinks (hot water + tea) / to-go |
 | 3003 + bev id | per-drink counters: 3004 espresso (01), 3013 flat white (0A), 3015 hot milk (0C), 3019 hot water (10), 3025 tea (16) … |

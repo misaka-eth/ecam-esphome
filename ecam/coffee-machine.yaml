@@ -780,8 +780,9 @@ text_sensor:
       if (t.empty()) return {};
       return t;
   # Device info, read when the machine comes online: PAR 205-209 serial number (4 ASCII bytes each),
-  # 200-203 production date and 199 EEPROM version (shown raw), 210 the Bluetooth PIN.
+  # 200-203 factory date, 199 EEPROM version (shown raw), 210 the Bluetooth PIN.
   - platform: template
+    id: serial_number
     name: Serial number
     icon: mdi:identifier
     entity_category: diagnostic
@@ -818,6 +819,31 @@ text_sensor:
       else
         snprintf(text, sizeof(text), "%u %u %u %u", unsigned(p[0]), unsigned(p[1]), unsigned(p[2]), unsigned(p[3]));
       return std::string(text);
+  # Production date from the serial number: the product code (letters at its end) is followed by YYMMDD,
+  # the date printed on the sticker behind the water tank (217073DU 220926 J 0030 = 2022-09-26).
+  - platform: template
+    name: Production date
+    icon: mdi:calendar
+    entity_category: diagnostic
+    update_interval: 30s
+    lambda: |-
+      const std::string &s = id(serial_number).state;
+      auto digit = [](char c) { return c >= '0' && c <= '9'; };
+      for (size_t i = 1; i + 6 <= s.size(); i++) {
+        char before = s[i - 1];
+        if (!((before >= 'A' && before <= 'Z') || (before >= 'a' && before <= 'z')))
+          continue;
+        bool ok = true;
+        for (size_t k = i; k < i + 6; k++)
+          ok = ok && digit(s[k]);
+        if (!ok)
+          continue;
+        int month = (s[i + 2] - '0') * 10 + (s[i + 3] - '0'), day = (s[i + 4] - '0') * 10 + (s[i + 5] - '0');
+        if (month < 1 || month > 12 || day < 1 || day > 31)
+          continue;
+        return "20" + s.substr(i, 2) + "-" + s.substr(i + 2, 2) + "-" + s.substr(i + 4, 2);
+      }
+      return {};
   - platform: template
     name: EEPROM version
     icon: mdi:chip
