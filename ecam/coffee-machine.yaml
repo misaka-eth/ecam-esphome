@@ -705,7 +705,16 @@ text:
     set_action:
       - lambda: 'id(machine).rename_profile(4, std::string(x));'
 
+# Reports why the ESP last started (power loss, crash/watchdog, OTA, restart button), to tell
+# a firmware problem from the machine cutting the supply.
+debug:
+  update_interval: never
+
 text_sensor:
+  - platform: debug
+    reset_reason:
+      name: Reset reason
+      entity_category: diagnostic
   - platform: template
     name: State
     icon: mdi:coffee-maker
