@@ -81,7 +81,7 @@ Deleting a profile is a rename to an all-zero name. Deleting a custom drink: `83
 
 | Byte | Meaning |
 |------|---------|
-| 0 | accessory: 00 none, 01 hot-water spout, 02 milk jug, 04 milk jug (clean position), 06 cold-milk jug, 07 cold-milk jug in the clean position (confirmed on an ECAM450.76; the app asks to clean the jug then, as for 04) |
+| 0 | accessory: 00 none, 01 hot-water spout, 02 milk jug, 04 milk jug (clean position), 06 cold-milk jug, 07 cold-milk jug in the clean position (confirmed on an ECAM450.76; the app asks to clean the jug then, as for 04). In standby the 450.76 reports 07 and switch bit 15 whatever is attached (spout included), from ~10 s after switching off until power-on |
 | 1–2 | **switches**, u16 little-endian (below) |
 | 3–4 | **alarms**, u16 little-endian (below) |
 | 5 | state: 00 standby, 01 heating, 02 turning off, 04 descaling, 07 ready / brewing, 08 rinsing, 0A milk, 0B hot water, 0C milk clean |
@@ -119,7 +119,10 @@ position** (app names, enum `m6.p`; 11 and 15 have none).
 Confirmed on an ECAM450.76 (2026-11-28): 0 exactly while the hot-water spout is in (accessory 01); 6 set at the
 end of a coffee while the display asked to fill the tank, cleared by the refill (no alarm bit with it); 11 exactly
 while the cold-milk jug is attached (accessory 06), on and off; turned to the clean position it reads accessory 07
-and bit 15 instead of 11. The Switches sensor names 0, 3, 4, 6, 11 and 15 and
+and bit 15 instead of 11 (bit 15 and 07 also show in every standby, see the accessory byte). Bit 7 comes on
+2–4 s after the water tank is put back (with or without a refill; 8 of 10 times in a week), goes off when the
+tank is taken out or water runs through the brew unit (a brew or the power-on rinse), but not with hot water.
+The Switches sensor names 0, 3, 4, 6, 11 and 15 (15 not in standby) and
 shows the others as bit numbers; 7 came on after a tank refill and stayed (about 2 min on a 450.65.G). On an ECAM450.65.G (no chocolate, no jug) bit 9 was set
 exactly while a brew waited for beans, and bit 7 for about 2 min around a water tank refill.
 

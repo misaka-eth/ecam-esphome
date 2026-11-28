@@ -1189,6 +1189,10 @@ std::string Ecam::phase_text() const {
 }
 
 std::string Ecam::accessory_text() const {
+  // In standby an ECAM450.76 reports 07 (and switch bit 15) whatever is attached, the hot-water spout
+  // included: the sensor isn't read then, so 07 only means the cold-milk jug's clean position when on.
+  if (this->status_.state == 0x00 && this->status_.accessory == 0x07)
+    return "unknown (standby)";
   switch (this->status_.accessory) {
     case 0x00: return "none";
     case 0x01: return "hot water spout";

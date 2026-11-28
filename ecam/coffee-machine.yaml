@@ -843,6 +843,8 @@ text_sensor:
       // The app's names for the others (enum m6.p, see docs/protocol.md) don't fit e.g. the
       // ECAM450.65.G, so they show as bit numbers.
       uint16_t sw = id(machine).status().switches;
+      // Bit 15 is also set in standby whatever is attached (with accessory 07, see accessory_text).
+      bool standby = id(machine).status().state == 0x00;
       std::string out;
       for (int i = 0; i < 16; i++)
         if (sw & (1 << i)) {
@@ -852,7 +854,7 @@ text_sensor:
                  : i == 4  ? "tank out"
                  : i == 6  ? "water low"
                  : i == 11 ? "cold milk jug"
-                 : i == 15 ? "cold milk jug clean"
+                 : i == 15 && !standby ? "cold milk jug clean"
                            : "bit " + to_string(i);
         }
       return out.empty() ? std::string("none") : out;
