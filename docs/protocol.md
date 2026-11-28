@@ -81,7 +81,7 @@ Deleting a profile is a rename to an all-zero name. Deleting a custom drink: `83
 
 | Byte | Meaning |
 |------|---------|
-| 0 | accessory: 00 none, 01 hot-water spout, 02 milk jug, 04 milk jug (clean position), 06 cold-milk jug; 07 seen once with the spout not fully inserted |
+| 0 | accessory: 00 none, 01 hot-water spout, 02 milk jug, 04 milk jug (clean position), 06 cold-milk jug, 07 cold-milk jug in the clean position (confirmed on an ECAM450.76; the app asks to clean the jug then, as for 04) |
 | 1–2 | **switches**, u16 little-endian (below) |
 | 3–4 | **alarms**, u16 little-endian (below) |
 | 5 | state: 00 standby, 01 heating, 02 turning off, 04 descaling, 07 ready / brewing, 08 rinsing, 0A milk, 0B hot water, 0C milk clean |
@@ -114,10 +114,12 @@ always runs (also after only 80 min off), and no rinse before a drink was ever s
 Switches (physical sensors; the display's "insert …" prompts come from here, not from alarms):
 **0 spout**, 1 brew-unit motor up, 2 brew-unit motor down, **3 grounds container out**, **4 water tank
 out**, 5 knob, **6 water low**, 7 coffee jug (app name; set in normal operation here), 8 milk carafe, 9 chocolate tank,
-10 clean knob, **11 cold milk jug** (no app name), 13 door open, 14 pre-ground door open (app names, enum `m6.p`).
+10 clean knob, **11 cold milk jug**, 13 door open, 14 pre-ground door open, **15 cold milk jug in the clean
+position** (app names, enum `m6.p`; 11 and 15 have none).
 Confirmed on an ECAM450.76 (2026-11-28): 0 exactly while the hot-water spout is in (accessory 01); 6 set at the
 end of a coffee while the display asked to fill the tank, cleared by the refill (no alarm bit with it); 11 exactly
-while the cold-milk jug is attached (accessory 06), on and off. The Switches sensor names 0, 3, 4, 6 and 11 and
+while the cold-milk jug is attached (accessory 06), on and off; turned to the clean position it reads accessory 07
+and bit 15 instead of 11. The Switches sensor names 0, 3, 4, 6, 11 and 15 and
 shows the others as bit numbers; 7 came on after a tank refill and stayed (about 2 min on a 450.65.G). On an ECAM450.65.G (no chocolate, no jug) bit 9 was set
 exactly while a brew waited for beans, and bit 7 for about 2 min around a water tank refill.
 

@@ -839,7 +839,7 @@ text_sensor:
     update_interval: 1s
     lambda: |-
       if (!id(machine).has_status()) return {"unknown"};
-      // Named: the bits confirmed on an ECAM450.76 (0, 6 as the app names them; 11 has no app name).
+      // Named: the bits confirmed on an ECAM450.76 (0, 6 as the app names them; 11, 15 have no app name).
       // The app's names for the others (enum m6.p, see docs/protocol.md) don't fit e.g. the
       // ECAM450.65.G, so they show as bit numbers.
       uint16_t sw = id(machine).status().switches;
@@ -852,6 +852,7 @@ text_sensor:
                  : i == 4  ? "tank out"
                  : i == 6  ? "water low"
                  : i == 11 ? "cold milk jug"
+                 : i == 15 ? "cold milk jug clean"
                            : "bit " + to_string(i);
         }
       return out.empty() ? std::string("none") : out;

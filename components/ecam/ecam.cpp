@@ -1195,6 +1195,7 @@ std::string Ecam::accessory_text() const {
     case 0x02: return "milk jug";
     case 0x04: return "milk jug (clean)";
     case 0x06: return "cold milk jug";
+    case 0x07: return "cold milk jug (clean)";
     default: return "0x" + format_hex(this->status_.accessory);
   }
 }
