@@ -60,7 +60,7 @@ const de: Record<string, string> = {
   'Grounds container': 'Satzbehälter', 'Grounds level': 'Kaffeesatz (Rohwert)',
   'Grounds container fill': 'Füllstand', 'Empty the grounds container': 'Bitte Satzbehälter leeren',
   // device
-  'Serial number': 'Seriennummer', 'Production date': 'Produktionsdatum', 'EEPROM version': 'EEPROM-Version',
+  'Serial number': 'Seriennummer', 'Factory date': 'Werksdatum (EEPROM)', 'EEPROM version': 'EEPROM-Version',
   Accessory: 'Zubehör', Switches: 'Schalter', 'Custom drinks': 'Eigene Getränke', Restart: 'ESP neu starten',
   'Recipe limits': 'Rezeptgrenzen', 'Machine online': 'Maschine verbunden', Yes: 'Ja', No: 'Nein',
   'Really?': 'Sicher?', Saved: 'Gespeichert', none: 'keine',

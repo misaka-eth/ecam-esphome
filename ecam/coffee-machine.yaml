@@ -797,20 +797,27 @@ text_sensor:
         }
       }
       return out;
+  # PAR 201-203: month, day, two-digit year; PAR 200 unknown (523 here), shown in brackets. On an
+  # ECAM450.76 this is one week after the production date on the sticker behind the water tank
+  # (YYMMDD 220926 there, 10 3 22 here): presumably the end-of-line programming, hence the name.
   - platform: template
-    name: Production date
+    name: Factory date
     icon: mdi:factory
     entity_category: diagnostic
     update_interval: 30s
     lambda: |-
-      std::string out;
-      for (int pid = 200; pid <= 203; pid++) {
-        auto v = id(machine).param(pid);
+      uint32_t p[4];
+      for (int i = 0; i < 4; i++) {
+        auto v = id(machine).param(200 + i);
         if (!v) return {};
-        if (!out.empty()) out += " ";
-        out += to_string(*v);
+        p[i] = *v;
       }
-      return out;
+      char text[40];
+      if (p[1] >= 1 && p[1] <= 12 && p[2] >= 1 && p[2] <= 31 && p[3] <= 99)
+        snprintf(text, sizeof(text), "20%02u-%02u-%02u (%u)", unsigned(p[3]), unsigned(p[1]), unsigned(p[2]), unsigned(p[0]));
+      else
+        snprintf(text, sizeof(text), "%u %u %u %u", unsigned(p[0]), unsigned(p[1]), unsigned(p[2]), unsigned(p[3]));
+      return std::string(text);
   - platform: template
     name: EEPROM version
     icon: mdi:chip

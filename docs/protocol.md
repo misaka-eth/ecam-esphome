@@ -223,7 +223,7 @@ The service menu shows the same ids as `PAR <decimal>`.
 | 400, 402 | flow-meter pulses, about 25 per ml (2620 pulses weighed as 105 g) |
 | 115 | milk cleans (**confirmed**: +1 per milk clean; 116 unchanged) |
 | 199 | mainboard EEPROM version |
-| 200–203 | production date |
+| 200–203 | factory date: 201 month, 202 day, 203 year (two digits); 200 unknown (523). An ECAM450.76 reads 10 3 22 = 2022-10-03, one week after the production date on the sticker behind the water tank (YYMMDD 220926 = 2022-09-26) |
 | 205–209 | serial number (ASCII) |
 | 210 | PIN |
 | 3000 / 3001 / 3002 / 3003 | category totals: coffee only / with milk coffees / water drinks (hot water + tea) / to-go |
